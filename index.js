@@ -16,7 +16,8 @@ function NydusClient(host) {
   this.socket.open()
   this.readyState = 'connecting'
 
-  this._outstandingCalls = Object.create(null)
+  this._outstandingReqs = Object.create(null)
+  this._subscriptions = Object.create(null)
 
   this.socket.on('connect', this._onConnect.bind(this))
     .on('disconnect', this._onDisconnect.bind(this))
@@ -44,7 +45,7 @@ NydusClient.prototype.call = function(path, params, cb) {
   }
 
   var message = { type: protocol.CALL
-                , callId: this._getCallId()
+                , callId: this._getRequestId()
                 , procPath: path
                 }
     , callback = arguments.length > 1 ? arguments[arguments.length - 1] : function() {}
@@ -54,16 +55,46 @@ NydusClient.prototype.call = function(path, params, cb) {
     callParams.push(arguments[arguments.length - 1])
   }
   message.params = callParams
-  this._outstandingCalls[message.callId] = callback
+  this._outstandingReqs[message.callId] = callback
   this.socket.sendMessage(message)
 }
 
-NydusClient.prototype._getCallId = function() {
-  var id
-  do {
-    id = idgen(16)
-  } while (this._outstandingCalls[id])
-  return id
+// subscribe('/my/path', function(err, results...) { }, function(event) { })
+NydusClient.prototype.subscribe = function(path, cb, listener) {
+  var self = this
+  if (this.readyState != 'connected') {
+    this.once('connect', function() {
+      self.subscribe.apply(self, arguments)
+    })
+    return
+  }
+
+  var message = { type: protocol.SUBSCRIBE
+                , requestId: this._getRequestId()
+                , topicPath: path
+                }
+    , callback = arguments.length > 2 ? cb : function() {}
+  if (arguments.length <= 2) {
+    listener = cb
+  }
+  this._outstandingReqs[message.requestId] = function(err) {
+    if (err) {
+      return callback.apply(this, arguments)
+    }
+
+    if (!self._subscriptions[path]) {
+      self._subscriptions[path] = [ listener ]
+    } else {
+      self._subscriptions[path].push(listener)
+    }
+
+    callback.apply(this, arguments)
+  }
+  this.socket.sendMessage(message)
+}
+
+NydusClient.prototype._getRequestId = function() {
+  return idgen(16)
 }
 
 NydusClient.prototype._onConnect = function() {
@@ -103,6 +134,9 @@ NydusClient.prototype._onError = function(err) {
 NydusClient.prototype._onDisconnect = function() {
   this.readyState = 'disconnected'
   this.emit('disconnect')
+  // TODO(tec27): clean up oustanding requests and remove subscriptions?
+  // Another possibility would be to save subscriptions for the reconnect and re-add them
+  // automatically, but this may be a bit too magical.
 }
 
 NydusClient.prototype._onCallMessage = function(message) {
@@ -110,24 +144,24 @@ NydusClient.prototype._onCallMessage = function(message) {
 }
 
 NydusClient.prototype._onResultMessage = function(message) {
-  var cb = this._outstandingCalls[message.callId]
+  var cb = this._outstandingReqs[message.callId]
   if (!cb) {
     return this.emit('error',
       new Error('Received a result for an unrecognized callId: ' + message.callId))
   }
-  delete this._outstandingCalls[message.callId]
+  delete this._outstandingReqs[message.callId]
 
   var results = [ null /* err */ ].concat(message.results)
   cb.apply(this, results)
 }
 
 NydusClient.prototype._onErrorMessage = function(message) {
-  var cb = this._outstandingCalls[message.callId]
+  var cb = this._outstandingReqs[message.callId]
   if (!cb) {
     return this.emit('error',
       new Error('Received an error for an unrecognized callId: ' + message.callId))
   }
-  delete this._outstandingCalls[message.callId]
+  delete this._outstandingReqs[message.callId]
 
   var err = { code: message.errorCode
             , desc: message.errorDesc
@@ -149,5 +183,12 @@ NydusClient.prototype._onPublishMessage = function(message) {
 }
 
 NydusClient.prototype._onEventMessage = function(message) {
+  if (!this._subscriptions[message.topicPath]) {
+    return
+  }
 
+  var listeners = this._subscriptions[message.topicPath]
+  for (var i = 0, len = listeners.length; i < len; i++) {
+    listeners[i].call(this, message.event)
+  }
 }
