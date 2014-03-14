@@ -45,7 +45,7 @@ NydusClient.prototype.call = function(path, params, cb) {
   }
 
   var message = { type: protocol.CALL
-                , callId: this._getRequestId()
+                , requestId: this._getRequestId()
                 , procPath: path
                 }
     , callback = arguments.length > 1 ? arguments[arguments.length - 1] : function() {}
@@ -55,7 +55,7 @@ NydusClient.prototype.call = function(path, params, cb) {
     callParams.push(arguments[arguments.length - 1])
   }
   message.params = callParams
-  this._outstandingReqs[message.callId] = callback
+  this._outstandingReqs[message.requestId] = callback
   this.socket.sendMessage(message)
 }
 
@@ -178,28 +178,28 @@ NydusClient.prototype._onDisconnect = function() {
 }
 
 NydusClient.prototype._onCallMessage = function(message) {
-  
+
 }
 
 NydusClient.prototype._onResultMessage = function(message) {
-  var cb = this._outstandingReqs[message.callId]
+  var cb = this._outstandingReqs[message.requestId]
   if (!cb) {
     return this.emit('error',
-      new Error('Received a result for an unrecognized callId: ' + message.callId))
+      new Error('Received a result for an unrecognized requestId: ' + message.requestId))
   }
-  delete this._outstandingReqs[message.callId]
+  delete this._outstandingReqs[message.requestId]
 
   var results = [ null /* err */ ].concat(message.results)
   cb.apply(this, results)
 }
 
 NydusClient.prototype._onErrorMessage = function(message) {
-  var cb = this._outstandingReqs[message.callId]
+  var cb = this._outstandingReqs[message.requestId]
   if (!cb) {
     return this.emit('error',
-      new Error('Received an error for an unrecognized callId: ' + message.callId))
+      new Error('Received an error for an unrecognized requestId: ' + message.requestId))
   }
-  delete this._outstandingReqs[message.callId]
+  delete this._outstandingReqs[message.requestId]
 
   var err = { code: message.errorCode
             , desc: message.errorDesc
@@ -209,15 +209,29 @@ NydusClient.prototype._onErrorMessage = function(message) {
 }
 
 NydusClient.prototype._onSubscribeMessage = function(message) {
-
+  // We don't support subscribing to clients, so give the server an error
+  var reply = { type: protocol.ERROR
+              , requestId: message.requestId
+              , errorCode: 405
+              , errorDesc: 'method not allowed'
+              , errorDetails: 'client does not support subscriptions'
+              }
+  this.socket.sendMessage(reply)
 }
 
 NydusClient.prototype._onUnsubscribeMessage = function(message) {
-
+  // We don't support subscribing to clients, so any unsubscribe is also an error
+  var reply = { type: protocol.ERROR
+              , requestId: message.requestId
+              , errorCode: 405
+              , errorDesc: 'method not allowed'
+              , errorDetails: 'client does not support subscriptions'
+              }
+  this.socket.sendMessage(reply)
 }
 
 NydusClient.prototype._onPublishMessage = function(message) {
-
+  // We don't support publishing events to clients, so drop the message
 }
 
 NydusClient.prototype._onEventMessage = function(message) {
