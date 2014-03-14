@@ -60,7 +60,7 @@ NydusClient.prototype.call = function(path, params, cb) {
 }
 
 // subscribe('/my/path', function(err, results...) { }, function(event) { })
-NydusClient.prototype.subscribe = function(path, cb, listener) {
+NydusClient.prototype.subscribe = function(path, listener, cb) {
   var self = this
   if (this.readyState != 'connected') {
     this.once('connect', function() {
@@ -74,11 +74,9 @@ NydusClient.prototype.subscribe = function(path, cb, listener) {
                 , topicPath: path
                 }
     , callback = arguments.length > 2 ? cb : function() {}
-  if (arguments.length <= 2) {
-    listener = cb
-  }
   this._outstandingReqs[message.requestId] = function(err) {
     if (err) {
+      // TODO(tec27): emit an error if no callback is set?
       return callback.apply(this, arguments)
     }
 
@@ -88,6 +86,35 @@ NydusClient.prototype.subscribe = function(path, cb, listener) {
       self._subscriptions[path].push(listener)
     }
 
+    callback.apply(this, arguments)
+  }
+  this.socket.sendMessage(message)
+}
+
+NydusClient.prototype.unsubscribe = function(path, listener, cb) {
+  var self = this
+  // TODO(tec27): handle cases where we aren't connected yet? Probably need to rework how the
+  // similar handling works for subscribe to make that possible
+  if (!self._subscriptions[path]) {
+    throw new Error('No subscriptions exist for ' + path)
+  }
+  var index = self._subscriptions[path].indexOf(listener)
+  if (index == -1) {
+    throw new Error('The specified listener is not currently subscribed to ' + path)
+  }
+
+  var message = { type: protocol.UNSUBSCRIBE
+                , requestId: this._getRequestId()
+                , topicPath: path
+                }
+    , callback = arguments.length > 2 ? cb : function() {}
+  this._outstandingReqs[message.requestId] = function(err) {
+    if (err) {
+      // TODO(tec27): emit an error if no callback is set?
+      return callback.apply(this, arguments)
+    }
+
+    self._subscriptions[path].splice(index, 1)
     callback.apply(this, arguments)
   }
   this.socket.sendMessage(message)
