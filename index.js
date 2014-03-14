@@ -59,7 +59,7 @@ NydusClient.prototype.call = function(path, params, cb) {
   this.socket.sendMessage(message)
 }
 
-// subscribe('/my/path', function(err, results...) { }, function(event) { })
+// subscribe('/my/path', function(event) { }, function(err) { })
 NydusClient.prototype.subscribe = function(path, listener, cb) {
   var self = this
   if (this.readyState != 'connected') {
@@ -91,6 +91,7 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
   this.socket.sendMessage(message)
 }
 
+// unsubscribe('/my/path', function(event) { }, function(err) { })
 NydusClient.prototype.unsubscribe = function(path, listener, cb) {
   var self = this
   // TODO(tec27): handle cases where we aren't connected yet? Probably need to rework how the
@@ -117,6 +118,16 @@ NydusClient.prototype.unsubscribe = function(path, listener, cb) {
     self._subscriptions[path].splice(index, 1)
     callback.apply(this, arguments)
   }
+  this.socket.sendMessage(message)
+}
+
+// publish('/my/path', ..., [ excludeMe ])
+NydusClient.prototype.publish = function(path, event, excludeMe) {
+  var message = { type: protocol.PUBLISH
+                , topicPath: path
+                , event: event
+                , excludeMe: excludeMe
+                }
   this.socket.sendMessage(message)
 }
 
