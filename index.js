@@ -3,6 +3,7 @@ var Socket = require('./socket')
   , inherits = require('inherits')
   , protocol = require('nydus-protocol')
   , idgen = require('idgen')
+  , createRouter = require('./router')
 
 module.exports = function(host) {
   return new NydusClient(host)
@@ -15,6 +16,7 @@ function NydusClient(host) {
   this.socket = new Socket(host)
   this.socket.open()
   this.readyState = 'connecting'
+  this.router = createRouter()
 
   this._outstandingReqs = Object.create(null)
   this._subscriptions = Object.create(null)
@@ -178,7 +180,58 @@ NydusClient.prototype._onDisconnect = function() {
 }
 
 NydusClient.prototype._onCallMessage = function(message) {
+  var self = this
+    , route = this.router.matchCall(message.procPath)
+    , sent = false
+  if (!route) {
+    var response =  { type: protocol.ERROR
+                    , requestId: message.requestId
+                    , errorCode: 404
+                    , errorDesc: 'not found'
+                    , errorDetails: message.procPath + ' could not be found'
+                    }
+    return this.socket.sendMessage(response)
+  }
 
+  var req = { socket: this._socket
+            , requestId: message.requestId
+            , route: route.route
+            , params: route.params
+            , splats: route.splats
+            }
+    , res = { complete: complete, fail: fail }
+    , args = [ req, res ].concat(message.params)
+
+  route.fn.apply(this, args)
+
+  function complete(results) {
+    if (sent) {
+      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+      return
+    }
+    var args = Array.prototype.slice.apply(arguments)
+      , response =  { type: protocol.RESULT
+                    , requestId: message.requestId
+                    , results: args
+                    }
+    self.socket.sendMessage(response)
+    sent = true
+  }
+
+  function fail(errorCode, errorDesc, errorDetails) {
+    if (sent) {
+      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+      return
+    }
+    var response =  { type: protocol.ERROR
+                    , requestId: message.requestId
+                    , errorCode: errorCode
+                    , errorDesc: errorDesc
+                    , errorDetails: errorDetails
+                    }
+    self.socket.sendMessage(response)
+    sent = true
+  }
 }
 
 NydusClient.prototype._onResultMessage = function(message) {
@@ -244,3 +297,5 @@ NydusClient.prototype._onEventMessage = function(message) {
     listeners[i].call(this, message.event)
   }
 }
+
+
