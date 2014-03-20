@@ -18,6 +18,8 @@ function NydusClient(host) {
   this.readyState = 'connecting'
   this.router = createRouter()
 
+  this._setupPong()
+
   this._outstandingReqs = Object.create(null)
   this._subscriptions = Object.create(null)
 
@@ -156,6 +158,7 @@ NydusClient.prototype._onConnect = function() {
       self.emit('error', new Error('Server is using an unsupported protocol version: ' +
           message.protocolVersion))
     } else {
+      self._resetPingTimeout()
       self.readyState = 'connected'
       self.emit('connect')
     }
@@ -163,7 +166,7 @@ NydusClient.prototype._onConnect = function() {
 
   function onDisconnect(message) {
     clearTimeout(timeout)
-    self.socket.removeListener('message:welcome')
+    self.socket.removeListener('message:welcome', onWelcome)
   }
 }
 
@@ -172,6 +175,11 @@ NydusClient.prototype._onError = function(err) {
 }
 
 NydusClient.prototype._onDisconnect = function() {
+  if (typeof this._pingTimeout != 'undefined') {
+    clearTimeout(this._pingTimeout)
+    delete this._pingTimeout
+  }
+
   this.readyState = 'disconnected'
   this.emit('disconnect')
   // TODO(tec27): clean up oustanding requests and remove subscriptions?
@@ -298,4 +306,23 @@ NydusClient.prototype._onEventMessage = function(message) {
   }
 }
 
+NydusClient.prototype._setupPong = function() {
+  var self = this
+  this.router.call('/_/ping', function(req, res) {
+    res.complete()
+    self._resetPingTimeout()
+  })
+}
 
+NydusClient.prototype._resetPingTimeout = function() {
+  if (typeof this._pingTimeout != 'undefined') {
+    clearTimeout(this._pingTimeout)
+  }
+
+  var self = this
+  this._pingTimeout = setTimeout(onTimeout, 60000)
+  function onTimeout() {
+    delete self._pingTimeout
+    self.socket.close()
+  }
+}
