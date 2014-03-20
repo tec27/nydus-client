@@ -3,6 +3,7 @@ var Socket = require('./socket')
   , inherits = require('inherits')
   , protocol = require('nydus-protocol')
   , idgen = require('idgen')
+  , Backo = require('backo')
   , createRouter = require('./router')
 
 module.exports = function(host) {
@@ -11,13 +12,31 @@ module.exports = function(host) {
 
 NydusClient.WELCOME_TIMEOUT = 25000
 
-function NydusClient(host) {
+NydusClient.defaults =  { pingTimeout: 60000
+                        , maxReconnectAttempts: -1
+                        }
+
+function NydusClient(host, options) {
   EventEmitter.call(this)
   this.socket = new Socket(host)
   this.socket.open()
   this.readyState = 'connecting'
   this.router = createRouter()
+  this._forcedDisconnect = false
 
+  this._options = options || {}
+  for (var key in NydusClient.defaults) {
+    if (typeof this._options[key] == 'undefined') {
+      this._options[key] = NydusClient.defaults[key]
+    }
+  }
+
+  this._backo = new Backo({ min: 100
+                          , max: 400000
+                          , jitter: 100
+                          , factor: 4
+                          })
+  this._reconnectAttempts = 0
   this._setupPong()
 
   this._outstandingReqs = Object.create(null)
@@ -141,11 +160,14 @@ NydusClient.prototype._getRequestId = function() {
 
 NydusClient.prototype._onConnect = function() {
   var self = this
+  this._reconnectAttempts = 0
+  this._backo.reset()
   this.socket.once('message:welcome', onWelcome)
     .once('disconnect', onDisconnect)
 
   var timeout = setTimeout(function() {
     self.socket.removeListener('message:welcome', onWelcome)
+    this.forcedDisconnect = true
     self.socket.close()
     self.emit('error', new Error('Server did not send a WELCOME on connect'))
   }, NydusClient.WELCOME_TIMEOUT)
@@ -154,6 +176,7 @@ NydusClient.prototype._onConnect = function() {
     clearTimeout(timeout)
     self.socket.removeListener('disconnect', onDisconnect)
     if (message.protocolVersion != protocol.protocolVersion) {
+      this._forcedDisconnect = true
       self.socket.close()
       self.emit('error', new Error('Server is using an unsupported protocol version: ' +
           message.protocolVersion))
@@ -182,9 +205,29 @@ NydusClient.prototype._onDisconnect = function() {
 
   this.readyState = 'disconnected'
   this.emit('disconnect')
-  // TODO(tec27): clean up oustanding requests and remove subscriptions?
-  // Another possibility would be to save subscriptions for the reconnect and re-add them
-  // automatically, but this may be a bit too magical.
+
+  // TODO(tec27): maybe automatically resubscribe on reconnect instead?
+  this._outstandingReqs = Object.create(null)
+  this._subscriptions = Object.create(null)
+
+  if (!this._forcedDisconnect) {
+    this._attemptReconnect()
+  }
+  this._forcedDisconnect = false
+}
+
+NydusClient.prototype._attemptReconnect = function() {
+  if (this._options.maxReconnectAttempts > 0 &&
+      this._reconnectAttempts > this._options.maxReconnectAttempts) {
+    return
+  }
+
+  this.reconnectAttempts++
+
+  var self = this
+  setTimeout(function() {
+    self.socket.open()
+  }, this._backo.duration())
 }
 
 NydusClient.prototype._onCallMessage = function(message) {
@@ -320,7 +363,7 @@ NydusClient.prototype._resetPingTimeout = function() {
   }
 
   var self = this
-  this._pingTimeout = setTimeout(onTimeout, 60000)
+  this._pingTimeout = setTimeout(onTimeout, this._options.pingTimeout)
   function onTimeout() {
     delete self._pingTimeout
     self.socket.close()
