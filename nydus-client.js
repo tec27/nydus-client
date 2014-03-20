@@ -4,6 +4,8 @@ var Socket = require('./socket')
   , inherits = require('inherits')
   , protocol = require('nydus-protocol')
   , idgen = require('idgen')
+  , Backo = require('backo')
+  , createRouter = require('./router')
 
 module.exports = function(host) {
   return new NydusClient(host)
@@ -11,11 +13,32 @@ module.exports = function(host) {
 
 NydusClient.WELCOME_TIMEOUT = 25000
 
-function NydusClient(host) {
+NydusClient.defaults =  { pingTimeout: 60000
+                        , maxReconnectAttempts: -1
+                        }
+
+function NydusClient(host, options) {
   EventEmitter.call(this)
   this.socket = new Socket(host)
   this.socket.open()
   this.readyState = 'connecting'
+  this.router = createRouter()
+  this._forcedDisconnect = false
+
+  this._options = options || {}
+  for (var key in NydusClient.defaults) {
+    if (typeof this._options[key] == 'undefined') {
+      this._options[key] = NydusClient.defaults[key]
+    }
+  }
+
+  this._backo = new Backo({ min: 100
+                          , max: 400000
+                          , jitter: 100
+                          , factor: 4
+                          })
+  this._reconnectAttempts = 0
+  this._setupPong()
 
   this._outstandingReqs = Object.create(null)
   this._subscriptions = Object.create(null)
@@ -46,7 +69,7 @@ NydusClient.prototype.call = function(path, params, cb) {
   }
 
   var message = { type: protocol.CALL
-                , callId: this._getRequestId()
+                , requestId: this._getRequestId()
                 , procPath: path
                 }
     , callback = arguments.length > 1 ? arguments[arguments.length - 1] : function() {}
@@ -56,7 +79,7 @@ NydusClient.prototype.call = function(path, params, cb) {
     callParams.push(arguments[arguments.length - 1])
   }
   message.params = callParams
-  this._outstandingReqs[message.callId] = callback
+  this._outstandingReqs[message.requestId] = callback
   this.socket.sendMessage(message)
 }
 
@@ -138,11 +161,14 @@ NydusClient.prototype._getRequestId = function() {
 
 NydusClient.prototype._onConnect = function() {
   var self = this
+  this._reconnectAttempts = 0
+  this._backo.reset()
   this.socket.once('message:welcome', onWelcome)
     .once('disconnect', onDisconnect)
 
   var timeout = setTimeout(function() {
     self.socket.removeListener('message:welcome', onWelcome)
+    this.forcedDisconnect = true
     self.socket.close()
     self.emit('error', new Error('Server did not send a WELCOME on connect'))
   }, NydusClient.WELCOME_TIMEOUT)
@@ -151,10 +177,12 @@ NydusClient.prototype._onConnect = function() {
     clearTimeout(timeout)
     self.socket.removeListener('disconnect', onDisconnect)
     if (message.protocolVersion != protocol.protocolVersion) {
+      this._forcedDisconnect = true
       self.socket.close()
       self.emit('error', new Error('Server is using an unsupported protocol version: ' +
           message.protocolVersion))
     } else {
+      self._resetPingTimeout()
       self.readyState = 'connected'
       self.emit('connect')
     }
@@ -162,7 +190,7 @@ NydusClient.prototype._onConnect = function() {
 
   function onDisconnect(message) {
     clearTimeout(timeout)
-    self.socket.removeListener('message:welcome')
+    self.socket.removeListener('message:welcome', onWelcome)
   }
 }
 
@@ -171,36 +199,112 @@ NydusClient.prototype._onError = function(err) {
 }
 
 NydusClient.prototype._onDisconnect = function() {
+  if (typeof this._pingTimeout != 'undefined') {
+    clearTimeout(this._pingTimeout)
+    delete this._pingTimeout
+  }
+
   this.readyState = 'disconnected'
   this.emit('disconnect')
-  // TODO(tec27): clean up oustanding requests and remove subscriptions?
-  // Another possibility would be to save subscriptions for the reconnect and re-add them
-  // automatically, but this may be a bit too magical.
+
+  // TODO(tec27): maybe automatically resubscribe on reconnect instead?
+  this._outstandingReqs = Object.create(null)
+  this._subscriptions = Object.create(null)
+
+  if (!this._forcedDisconnect) {
+    this._attemptReconnect()
+  }
+  this._forcedDisconnect = false
+}
+
+NydusClient.prototype._attemptReconnect = function() {
+  if (this._options.maxReconnectAttempts > 0 &&
+      this._reconnectAttempts > this._options.maxReconnectAttempts) {
+    return
+  }
+
+  this.reconnectAttempts++
+
+  var self = this
+  setTimeout(function() {
+    self.socket.open()
+  }, this._backo.duration())
 }
 
 NydusClient.prototype._onCallMessage = function(message) {
-  
+  var self = this
+    , route = this.router.matchCall(message.procPath)
+    , sent = false
+  if (!route) {
+    var response =  { type: protocol.ERROR
+                    , requestId: message.requestId
+                    , errorCode: 404
+                    , errorDesc: 'not found'
+                    , errorDetails: message.procPath + ' could not be found'
+                    }
+    return this.socket.sendMessage(response)
+  }
+
+  var req = { socket: this._socket
+            , requestId: message.requestId
+            , route: route.route
+            , params: route.params
+            , splats: route.splats
+            }
+    , res = { complete: complete, fail: fail }
+    , args = [ req, res ].concat(message.params)
+
+  route.fn.apply(this, args)
+
+  function complete(results) {
+    if (sent) {
+      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+      return
+    }
+    var args = Array.prototype.slice.apply(arguments)
+      , response =  { type: protocol.RESULT
+                    , requestId: message.requestId
+                    , results: args
+                    }
+    self.socket.sendMessage(response)
+    sent = true
+  }
+
+  function fail(errorCode, errorDesc, errorDetails) {
+    if (sent) {
+      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+      return
+    }
+    var response =  { type: protocol.ERROR
+                    , requestId: message.requestId
+                    , errorCode: errorCode
+                    , errorDesc: errorDesc
+                    , errorDetails: errorDetails
+                    }
+    self.socket.sendMessage(response)
+    sent = true
+  }
 }
 
 NydusClient.prototype._onResultMessage = function(message) {
-  var cb = this._outstandingReqs[message.callId]
+  var cb = this._outstandingReqs[message.requestId]
   if (!cb) {
     return this.emit('error',
-      new Error('Received a result for an unrecognized callId: ' + message.callId))
+      new Error('Received a result for an unrecognized requestId: ' + message.requestId))
   }
-  delete this._outstandingReqs[message.callId]
+  delete this._outstandingReqs[message.requestId]
 
   var results = [ null /* err */ ].concat(message.results)
   cb.apply(this, results)
 }
 
 NydusClient.prototype._onErrorMessage = function(message) {
-  var cb = this._outstandingReqs[message.callId]
+  var cb = this._outstandingReqs[message.requestId]
   if (!cb) {
     return this.emit('error',
-      new Error('Received an error for an unrecognized callId: ' + message.callId))
+      new Error('Received an error for an unrecognized requestId: ' + message.requestId))
   }
-  delete this._outstandingReqs[message.callId]
+  delete this._outstandingReqs[message.requestId]
 
   var err = { code: message.errorCode
             , desc: message.errorDesc
@@ -210,15 +314,29 @@ NydusClient.prototype._onErrorMessage = function(message) {
 }
 
 NydusClient.prototype._onSubscribeMessage = function(message) {
-
+  // We don't support subscribing to clients, so give the server an error
+  var reply = { type: protocol.ERROR
+              , requestId: message.requestId
+              , errorCode: 405
+              , errorDesc: 'method not allowed'
+              , errorDetails: 'client does not support subscriptions'
+              }
+  this.socket.sendMessage(reply)
 }
 
 NydusClient.prototype._onUnsubscribeMessage = function(message) {
-
+  // We don't support subscribing to clients, so any unsubscribe is also an error
+  var reply = { type: protocol.ERROR
+              , requestId: message.requestId
+              , errorCode: 405
+              , errorDesc: 'method not allowed'
+              , errorDetails: 'client does not support subscriptions'
+              }
+  this.socket.sendMessage(reply)
 }
 
 NydusClient.prototype._onPublishMessage = function(message) {
-
+  // We don't support publishing events to clients, so drop the message
 }
 
 NydusClient.prototype._onEventMessage = function(message) {
@@ -232,7 +350,79 @@ NydusClient.prototype._onEventMessage = function(message) {
   }
 }
 
-},{"./socket":8,"events":2,"idgen":3,"inherits":4,"nydus-protocol":5}],2:[function(require,module,exports){
+NydusClient.prototype._setupPong = function() {
+  var self = this
+  this.router.call('/_/ping', function(req, res) {
+    res.complete()
+    self._resetPingTimeout()
+  })
+}
+
+NydusClient.prototype._resetPingTimeout = function() {
+  if (typeof this._pingTimeout != 'undefined') {
+    clearTimeout(this._pingTimeout)
+  }
+
+  var self = this
+  this._pingTimeout = setTimeout(onTimeout, this._options.pingTimeout)
+  function onTimeout() {
+    delete self._pingTimeout
+    self.socket.close()
+  }
+}
+
+},{"./router":10,"./socket":11,"backo":2,"events":3,"idgen":4,"inherits":5,"nydus-protocol":6}],2:[function(require,module,exports){
+
+/**
+ * Expose `Backoff`.
+ */
+
+module.exports = Backoff;
+
+/**
+ * Initialize backoff timer with `opts`.
+ *
+ * - `min` initial timeout in milliseconds [100]
+ * - `max` max timeout [10000]
+ * - `jitter` [0]
+ * - `factor` [2]
+ *
+ * @param {Object} opts
+ * @api public
+ */
+
+function Backoff(opts) {
+  opts = opts || {};
+  this.ms = opts.min || 100;
+  this.max = opts.max || 10000;
+  this.factor = opts.factor || 2;
+  this.jitter = opts.jitter || 0;
+  this.attempts = 0;
+}
+
+/**
+ * Return the backoff duration.
+ *
+ * @return {Number}
+ * @api public
+ */
+
+Backoff.prototype.duration = function(){
+  var ms = this.ms * Math.pow(this.factor, this.attempts++);
+  if (this.jitter) ms += Math.random() * this.jitter;
+  return Math.min(ms, this.max) | 0;
+};
+
+/**
+ * Reset the number of attempts.
+ *
+ * @api public
+ */
+
+Backoff.prototype.reset = function(){
+  this.attempts = 0;
+};
+},{}],3:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -534,7 +724,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 /**
  * id generator
  * ------------
@@ -577,7 +767,7 @@ function idgen_hex(len) {
 };
 module.exports.hex = idgen_hex;
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -602,7 +792,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 var debug = require('debug')('nydus-protocol')
 
 exports.TYPES = { WELCOME: 0
@@ -919,7 +1109,7 @@ function encodeEvent(obj, result) {
   result.push(obj.event)
 }
 
-},{"debug":6}],6:[function(require,module,exports){
+},{"debug":7}],7:[function(require,module,exports){
 
 /**
  * Expose `debug()` as the module.
@@ -1058,7 +1248,157 @@ try {
   if (window.localStorage) debug.enable(localStorage.debug);
 } catch(e){}
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
+
+var localRoutes = [];
+
+
+/**
+ * Convert path to route object
+ *
+ * A string or RegExp should be passed,
+ * will return { re, src, keys} obj
+ *
+ * @param  {String / RegExp} path
+ * @return {Object}
+ */
+ 
+var Route = function(path){
+  //using 'new' is optional
+  
+  var src, re, keys = [];
+  
+  if(path instanceof RegExp){
+    re = path;
+    src = path.toString();
+  }else{
+    re = pathToRegExp(path, keys);
+    src = path;
+  }
+
+  return {
+  	 re: re,
+  	 src: path.toString(),
+  	 keys: keys
+  }
+};
+
+/**
+ * Normalize the given path string,
+ * returning a regular expression.
+ *
+ * An empty array should be passed,
+ * which will contain the placeholder
+ * key names. For example "/user/:id" will
+ * then contain ["id"].
+ *
+ * @param  {String} path
+ * @param  {Array} keys
+ * @return {RegExp}
+ */
+var pathToRegExp = function (path, keys) {
+	path = path
+		.concat('/?')
+		.replace(/\/\(/g, '(?:/')
+		.replace(/(\/)?(\.)?:(\w+)(?:(\(.*?\)))?(\?)?/g, function(_, slash, format, key, capture, optional){
+			keys.push(key);
+			slash = slash || '';
+			return ''
+				+ (optional ? '' : slash)
+				+ '(?:'
+				+ (optional ? slash : '')
+				+ (format || '') + (capture || '([^/]+?)') + ')'
+				+ (optional || '');
+		})
+		.replace(/([\/.])/g, '\\$1')
+		.replace(/\*/g, '(.+)');
+	return new RegExp('^' + path + '$', 'i');
+};
+
+/**
+ * Attempt to match the given request to
+ * one of the routes. When successful
+ * a  {fn, params, splats} obj is returned
+ *
+ * @param  {Array} routes
+ * @param  {String} uri
+ * @return {Object}
+ */
+var match = function (routes, uri) {
+	var captures, i = 0;
+
+	for (var len = routes.length; i < len; ++i) {
+		var route = routes[i],
+		    re = route.re,
+		    keys = route.keys,
+		    splats = [],
+		    params = {};
+
+		if (captures = re.exec(uri)) {
+			for (var j = 1, len = captures.length; j < len; ++j) {
+				var key = keys[j-1],
+					val = typeof captures[j] === 'string'
+						? decodeURIComponent(captures[j])
+						: captures[j];
+				if (key) {
+					params[key] = val;
+				} else {
+					splats.push(val);
+				}
+			}
+			return {
+				params: params,
+				splats: splats,
+				route: route.src
+			};
+		}
+	}
+};
+
+/**
+ * Default "normal" router constructor.
+ * accepts path, fn tuples via addRoute
+ * returns {fn, params, splats, route}
+ *  via match
+ *
+ * @return {Object}
+ */
+ 
+var Router = function(){
+  //using 'new' is optional
+  return {
+    routes: [],
+    routeMap : {},
+    addRoute: function(path, fn){
+      if (!path) throw new Error(' route requires a path');
+      if (!fn) throw new Error(' route ' + path.toString() + ' requires a callback');
+
+      var route = Route(path);
+      route.fn = fn;
+
+      this.routes.push(route);
+      this.routeMap[path] = fn;
+    },
+
+    match: function(pathname){
+      var route = match(this.routes, pathname);
+      if(route){
+        route.fn = this.routeMap[route.route];
+      }
+      return route;
+    }
+  }
+};
+
+Router.Route = Route
+Router.pathToRegExp = pathToRegExp
+Router.match = match
+// back compat
+Router.Router = Router
+
+module.exports = Router
+
+},{}],9:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -1103,7 +1443,27 @@ function ws(uri, protocols, opts) {
 
 if (WebSocket) ws.prototype = WebSocket.prototype;
 
-},{}],8:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+var Router = require('routes')
+
+module.exports = function() {
+  return new NydusClientRouter()
+}
+
+function NydusClientRouter() {
+  this._callRouter = new Router()
+}
+
+NydusClientRouter.prototype.call = function(path, fn) {
+  this._callRouter.addRoute(path, fn)
+  return this
+}
+
+NydusClientRouter.prototype.matchCall = function(path) {
+  return this._callRouter.match(path)
+}
+
+},{"routes":8}],11:[function(require,module,exports){
 var WS = require('ws')
   , EventEmitter = require('events').EventEmitter
   , inherits = require('inherits')
@@ -1197,4 +1557,4 @@ Socket.prototype.sendMessage = function(message) {
   this._ws.send(encoded)
 }
 
-},{"events":2,"inherits":4,"nydus-protocol":5,"ws":7}]},{},[1])
+},{"events":3,"inherits":5,"nydus-protocol":6,"ws":9}]},{},[1])
