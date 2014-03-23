@@ -39,8 +39,8 @@ Socket.prototype._onOpen = function() {
   this.emit('connect')
 }
 
-Socket.prototype._onClose = function() {
-  this.emit('disconnect')
+Socket.prototype._onClose = function(event) {
+  this.emit('disconnect', event)
 }
 
 Socket.prototype._onError = function(event) {

@@ -198,10 +198,14 @@ NydusClient.prototype._onError = function(err) {
   this.emit('error', err)
 }
 
-NydusClient.prototype._onDisconnect = function() {
+NydusClient.prototype._onDisconnect = function(event) {
   if (typeof this._pingTimeout != 'undefined') {
     clearTimeout(this._pingTimeout)
     delete this._pingTimeout
+  }
+
+  if (event && event.code == 4001) {
+    this.emit('error', new Error('Unauthorized'))
   }
 
   this.readyState = 'disconnected'
@@ -211,7 +215,8 @@ NydusClient.prototype._onDisconnect = function() {
   this._outstandingReqs = Object.create(null)
   this._subscriptions = Object.create(null)
 
-  if (!this._forcedDisconnect) {
+  var shouldReconnect = !this._forcedDisconnect && (event && event.code != 4001)
+  if (shouldReconnect) {
     this._attemptReconnect()
   }
   this._forcedDisconnect = false
@@ -1505,8 +1510,8 @@ Socket.prototype._onOpen = function() {
   this.emit('connect')
 }
 
-Socket.prototype._onClose = function() {
-  this.emit('disconnect')
+Socket.prototype._onClose = function(event) {
+  this.emit('disconnect', event)
 }
 
 Socket.prototype._onError = function(event) {
