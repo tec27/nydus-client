@@ -86,8 +86,9 @@ NydusClient.prototype.call = function(path, params, cb) {
 NydusClient.prototype.subscribe = function(path, listener, cb) {
   var self = this
   if (this.readyState != 'connected') {
+    var args = arguments
     this.once('connect', function() {
-      self.subscribe.apply(self, arguments)
+      self.subscribe.apply(self, args)
     })
     return
   }
@@ -138,7 +139,10 @@ NydusClient.prototype.unsubscribe = function(path, listener, cb) {
       return callback.apply(this, arguments)
     }
 
-    self._subscriptions[path].splice(index, 1)
+    var index = self._subscriptions[path].indexOf(listener)
+    if (index != -1) {
+      self._subscriptions[path].splice(index, 1)
+    }
     callback.apply(this, arguments)
   }
   this.socket.sendMessage(message)
