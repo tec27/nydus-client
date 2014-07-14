@@ -6,8 +6,8 @@ var Socket = require('./socket')
   , Backo = require('backo')
   , createRouter = require('./router')
 
-module.exports = function(host) {
-  return new NydusClient(host)
+module.exports = function(host, options) {
+  return new NydusClient(host, options)
 }
 
 NydusClient.WELCOME_TIMEOUT = 25000
