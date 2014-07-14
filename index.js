@@ -14,6 +14,7 @@ NydusClient.WELCOME_TIMEOUT = 25000
 
 NydusClient.defaults =  { pingTimeout: 60000
                         , maxReconnectAttempts: -1
+                        , websocketOptions: null
                         }
 
 function NydusClient(host, options) {

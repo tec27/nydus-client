@@ -5,9 +5,10 @@ var WS = require('ws')
 
 module.exports = Socket
 
-function Socket(host) {
+function Socket(host, wsOptions) {
   EventEmitter.call(this)
   this._host = host
+  this._wsOptions = wsOptions || {}
 }
 inherits(Socket, EventEmitter)
 
@@ -17,7 +18,7 @@ Socket.prototype.open = function() {
   }
 
   if (!this._ws || this._ws.readyState >= WebSocket.CLOSING) {
-    this._ws = new WS(this._host)
+    this._ws = new WS(this._host, this._wsOptions)
     this._ws.onopen = this._onOpen.bind(this)
     this._ws.onclose = this._onClose.bind(this)
     this._ws.onerror = this._onError.bind(this)
