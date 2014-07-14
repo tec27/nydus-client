@@ -8,7 +8,7 @@ module.exports = Socket
 function Socket(host, wsOptions) {
   EventEmitter.call(this)
   this._host = host
-  this._wsOptions = wsOptions || {}
+  this._wsOptions = wsOptions
 }
 inherits(Socket, EventEmitter)
 
