@@ -19,11 +19,6 @@ NydusClient.defaults =  { pingTimeout: 60000
 
 function NydusClient(host, options) {
   EventEmitter.call(this)
-  this.socket = new Socket(host)
-  this.socket.open()
-  this.readyState = 'connecting'
-  this.router = createRouter()
-  this._forcedDisconnect = false
 
   this._options = options || {}
   for (var key in NydusClient.defaults) {
@@ -31,6 +26,12 @@ function NydusClient(host, options) {
       this._options[key] = NydusClient.defaults[key]
     }
   }
+
+  this.socket = new Socket(host, this._options.websocketOptions)
+  this.socket.open()
+  this.readyState = 'connecting'
+  this.router = createRouter()
+  this._forcedDisconnect = false
 
   this._backo = new Backo({ min: 100
                           , max: 400000
