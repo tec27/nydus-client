@@ -123,11 +123,11 @@ NydusClient.prototype.unsubscribe = function(path, listener, cb) {
   // TODO(tec27): handle cases where we aren't connected yet? Probably need to rework how the
   // similar handling works for subscribe to make that possible
   if (!self._subscriptions[path]) {
-    throw new Error('No subscriptions exist for ' + path)
+    return
   }
   var index = self._subscriptions[path].indexOf(listener)
   if (index == -1) {
-    throw new Error('The specified listener is not currently subscribed to ' + path)
+    return
   }
 
   var message = { type: protocol.UNSUBSCRIBE
