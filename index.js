@@ -95,6 +95,11 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
     return
   }
 
+  if (self._subscriptions[path] && self._subscriptions[path].indexOf(listener) != -1) {
+    // listener already registered, no need to resubscribe with it
+    return
+  }
+
   var message = { type: protocol.SUBSCRIBE
                 , requestId: this._getRequestId()
                 , topicPath: path
@@ -109,6 +114,10 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
     if (!self._subscriptions[path]) {
       self._subscriptions[path] = [ listener ]
     } else {
+      if (self._subscriptions[path].indexOf(listener) != -1) {
+        // listener already registered, no need to resubscribe with it
+        return
+      }
       self._subscriptions[path].push(listener)
     }
 
