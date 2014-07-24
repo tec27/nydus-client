@@ -83,6 +83,9 @@ Socket.prototype._onMessage = function(event) {
     case protocol.EVENT:
       this.emit('message:event', message)
       break
+    case protocol.REVOKE:
+      this.emit('message:revoke', message)
+      break
   }
 }
 

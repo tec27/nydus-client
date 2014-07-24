@@ -1,10 +1,9 @@
 {
   "name": "nydus-client",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
   "main": "index.js",
   "scripts": {
-    "browserify": "browserify -e index.js -o nydus-client.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -26,13 +25,10 @@
   "homepage": "https://github.com/tec27/nydus-client",
   "dependencies": {
     "ws": "^0.4.31",
-    "nydus-protocol": "^0.1.0",
+    "nydus-protocol": "^0.2.0",
     "inherits": "^2.0.1",
     "idgen": "^2.0.2",
-    "routes": "^1.1.0",
+    "routes": "^1.2.0",
     "backo": "^1.0.1"
-  },
-  "devDependencies": {
-    "browserify": "^4.2.0"
   }
 }

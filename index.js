@@ -54,7 +54,7 @@ function NydusClient(host, options) {
     .on('message:unsubscribe', this._onUnsubscribeMessage.bind(this))
     .on('message:publish', this._onPublishMessage.bind(this))
     .on('message:event', this._onEventMessage.bind(this))
-
+    .on('message:revoke', this._onRevokeMessage.bind(this))
 }
 inherits(NydusClient, EventEmitter)
 
@@ -358,6 +358,15 @@ NydusClient.prototype._onEventMessage = function(message) {
   for (var i = 0, len = listeners.length; i < len; i++) {
     listeners[i].call(this, message.event)
   }
+}
+
+NydusClient.prototype._onRevokeMessage = function(message) {
+  if (!this._subscriptions[message.topicPath]) {
+    return
+  }
+
+  this.emit('revoked', message.topicPath)
+  delete this._subscriptions[message.topicPath]
 }
 
 NydusClient.prototype._setupPong = function() {
