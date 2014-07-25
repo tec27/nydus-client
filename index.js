@@ -97,6 +97,9 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
 
   if (self._subscriptions[path] && self._subscriptions[path].indexOf(listener) != -1) {
     // listener already registered, no need to resubscribe with it
+    if (arguments.length > 2) {
+      cb.apply(this)
+    }
     return
   }
 
@@ -108,7 +111,7 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
   this._outstandingReqs[message.requestId] = function(err) {
     if (err) {
       // TODO(tec27): emit an error if no callback is set?
-      return callback.apply(this, arguments)
+      return callback.apply(self, arguments)
     }
 
     if (!self._subscriptions[path]) {
@@ -116,12 +119,12 @@ NydusClient.prototype.subscribe = function(path, listener, cb) {
     } else {
       if (self._subscriptions[path].indexOf(listener) != -1) {
         // listener already registered, no need to resubscribe with it
-        return
+        return callback.call(self)
       }
       self._subscriptions[path].push(listener)
     }
 
-    callback.apply(this, arguments)
+    callback.apply(self)
   }
   this.socket.sendMessage(message)
 }
@@ -147,14 +150,14 @@ NydusClient.prototype.unsubscribe = function(path, listener, cb) {
   this._outstandingReqs[message.requestId] = function(err) {
     if (err) {
       // TODO(tec27): emit an error if no callback is set?
-      return callback.apply(this, arguments)
+      return callback.apply(self, arguments)
     }
 
     var index = self._subscriptions[path].indexOf(listener)
     if (index != -1) {
       self._subscriptions[path].splice(index, 1)
     }
-    callback.apply(this, arguments)
+    callback.apply(self)
   }
   this.socket.sendMessage(message)
 }
