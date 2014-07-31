@@ -1,6 +1,6 @@
 {
   "name": "nydus-client",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
   "main": "index.js",
   "scripts": {
@@ -24,11 +24,11 @@
   },
   "homepage": "https://github.com/tec27/nydus-client",
   "dependencies": {
-    "ws": "^0.4.31",
-    "nydus-protocol": "^0.2.0",
+    "backo": "^1.0.1",
+    "cuid": "^1.2.4",
     "inherits": "^2.0.1",
-    "idgen": "^2.0.2",
+    "nydus-protocol": "^0.2.0",
     "routes": "^1.2.0",
-    "backo": "^1.0.1"
+    "ws": "^0.4.31"
   }
 }

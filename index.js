@@ -2,7 +2,7 @@ var Socket = require('./socket')
   , EventEmitter = require('events').EventEmitter
   , inherits = require('inherits')
   , protocol = require('nydus-protocol')
-  , idgen = require('idgen')
+  , cuid = require('cuid')
   , Backo = require('backo')
   , createRouter = require('./router')
 
@@ -173,7 +173,7 @@ NydusClient.prototype.publish = function(path, event, excludeMe) {
 }
 
 NydusClient.prototype._getRequestId = function() {
-  return idgen(16)
+  return cuid.slug()
 }
 
 NydusClient.prototype._onConnect = function() {
