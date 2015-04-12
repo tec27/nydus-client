@@ -58,6 +58,11 @@ function NydusClient(host, options) {
 }
 inherits(NydusClient, EventEmitter)
 
+NydusClient.prototype.close = function() {
+  this._forcedDisconnect = true
+  this.socket.close()
+}
+
 // call('/my/path', params..., function(err, results...) { })
 NydusClient.prototype.call = function(path, params, cb) {
   if (this.readyState != 'connected') {
@@ -185,7 +190,7 @@ NydusClient.prototype._onConnect = function() {
 
   var timeout = setTimeout(function() {
     self.socket.removeListener('message:welcome', onWelcome)
-    this.forcedDisconnect = true
+    this._forcedDisconnect = true
     self.socket.close()
     self.emit('error', new Error('Server did not send a WELCOME on connect'))
   }, NydusClient.WELCOME_TIMEOUT)
