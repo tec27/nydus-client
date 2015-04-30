@@ -17,7 +17,7 @@ Socket.prototype.open = function() {
     throw new Error('WebSockets are not supported')
   }
 
-  if (!this._ws || this._ws.readyState >= WebSocket.CLOSING) {
+  if (!this._ws || this._ws.readyState >= WS.CLOSING) {
     this._ws = new WS(this._host, this._wsOptions)
     this._ws.onopen = this._onOpen.bind(this)
     this._ws.onclose = this._onClose.bind(this)
@@ -29,7 +29,7 @@ Socket.prototype.open = function() {
 }
 
 Socket.prototype.close = function() {
-  if (this._ws && this._ws.readyState < WebSocket.CLOSING) {
+  if (this._ws && this._ws.readyState < WS.CLOSING) {
     this._ws.close()
   }
 
