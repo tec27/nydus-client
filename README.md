@@ -1,4 +1,4 @@
-#nydus-client
+# nydus-client
 
 WebSocket client library for the [nydus protocol](https://github.com/tec27/nydus-protocol), a simple RPC/PubSub protocol.
 
@@ -7,6 +7,6 @@ WebSocket client library for the [nydus protocol](https://github.com/tec27/nydus
 
 [![NPM](https://nodei.co/npm/nydus-client.png)](https://nodei.co/npm/nydus-client/)
 
-##License
+## License
 
 MIT
