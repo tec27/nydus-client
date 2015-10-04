@@ -45,7 +45,7 @@
     "eslint": "^1.6.0",
     "eslint-plugin-babel": "^2.1.1",
     "mocha": "^2.3.3",
-    "nydus": "^0.3.0",
+    "nydus": "^0.3.1",
     "rimraf": "^2.4.3"
   }
 }
