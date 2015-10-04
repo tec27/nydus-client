@@ -1,408 +1,233 @@
-var Socket = require('./socket')
-  , EventEmitter = require('events').EventEmitter
-  , inherits = require('inherits')
-  , protocol = require('nydus-protocol')
-  , cuid = require('cuid')
-  , Backo = require('backo')
-  , createRouter = require('./router')
+import eio from 'engine.io-client'
+import { EventEmitter } from 'events'
+import { Map } from 'immutable'
+import cuid from 'cuid'
+import ruta from 'ruta3'
+import Backoff from 'backo'
+import {
+  encode,
+  decode,
+  WELCOME,
+  INVOKE,
+  RESULT,
+  ERROR,
+  PUBLISH,
+  PARSER_ERROR,
+  protocolVersion,
+} from 'nydus-protocol'
 
-module.exports = function(host, options) {
-  return new NydusClient(host, options)
-}
+export { protocolVersion }
 
-NydusClient.WELCOME_TIMEOUT = 25000
+export class NydusClient extends EventEmitter {
+  constructor(host, opts = {}) {
+    super()
+    this.host = host
+    this.opts = opts
+    this.conn = null
+    this._outstanding = Map()
+    this._router = ruta()
 
-NydusClient.defaults =  { pingTimeout: 60000
-                        , maxReconnectAttempts: -1
-                        , websocketOptions: null
-                        }
-
-function NydusClient(host, options) {
-  EventEmitter.call(this)
-
-  this._options = options || {}
-  for (var key in NydusClient.defaults) {
-    if (typeof this._options[key] == 'undefined') {
-      this._options[key] = NydusClient.defaults[key]
-    }
-  }
-
-  this.socket = new Socket(host, this._options.websocketOptions)
-  this.socket.open()
-  this.readyState = 'connecting'
-  this.router = createRouter()
-  this._forcedDisconnect = false
-
-  this._backo = new Backo({ min: 100
-                          , max: 400000
-                          , jitter: 100
-                          , factor: 4
-                          })
-  this._reconnectAttempts = 0
-  this._setupPong()
-
-  this._outstandingReqs = Object.create(null)
-  this._subscriptions = Object.create(null)
-
-  this.socket.on('connect', this._onConnect.bind(this))
-    .on('disconnect', this._onDisconnect.bind(this))
-    .on('error', this._onError.bind(this))
-    .on('message:call', this._onCallMessage.bind(this))
-    .on('message:result', this._onResultMessage.bind(this))
-    .on('message:error', this._onErrorMessage.bind(this))
-    .on('message:subscribe', this._onSubscribeMessage.bind(this))
-    .on('message:unsubscribe', this._onUnsubscribeMessage.bind(this))
-    .on('message:publish', this._onPublishMessage.bind(this))
-    .on('message:event', this._onEventMessage.bind(this))
-    .on('message:revoke', this._onRevokeMessage.bind(this))
-}
-inherits(NydusClient, EventEmitter)
-
-NydusClient.prototype.close = function() {
-  this._forcedDisconnect = true
-  this.socket.close()
-}
-
-// call('/my/path', params..., function(err, results...) { })
-NydusClient.prototype.call = function(path, params, cb) {
-  if (this.readyState != 'connected') {
-    var args = arguments
-      , self = this
-    this.once('connect', function() {
-      self.call.apply(self, args)
+    this.opts.reconnectionAttempts = this.opts.reconnectionAttempts || Infinity
+    this._backoff = new Backoff({
+      min: opts.reconnectionDelay || 1000,
+      max: opts.reconnectionDelayMax || 10000,
+      jitter: opts.reconnectionJitter || 0.5,
     })
-    return
+    this._backoffTimer = null
+    this._connectTimer = null
+
+    this._wasOpened = false
+    this._skipReconnect = false
   }
 
-  var message = { type: protocol.CALL
-                , requestId: this._getRequestId()
-                , procPath: path
-                }
-    , callback = arguments.length > 1 ? arguments[arguments.length - 1] : function() {}
-    , callParams = Array.prototype.slice.call(arguments, 1, arguments.length - 1)
-  if (typeof callback != 'function') {
-    callback = function() {}
-    callParams.push(arguments[arguments.length - 1])
-  }
-  message.params = callParams
-  this._outstandingReqs[message.requestId] = callback
-  this.socket.sendMessage(message)
-}
-
-// subscribe('/my/path', function(event) { }, function(err) { })
-NydusClient.prototype.subscribe = function(path, listener, cb) {
-  var self = this
-  if (this.readyState != 'connected') {
-    var args = arguments
-    this.once('connect', function() {
-      self.subscribe.apply(self, args)
-    })
-    return
+  // One of: opening, open, closing, closed.
+  get readyState() {
+    return this.conn != null ? this.conn.readyState : 'closed'
   }
 
-  if (self._subscriptions[path] && self._subscriptions[path].indexOf(listener) != -1) {
-    // listener already registered, no need to resubscribe with it
-    if (arguments.length > 2) {
-      cb.apply(this)
-    }
-    return
-  }
-
-  var message = { type: protocol.SUBSCRIBE
-                , requestId: this._getRequestId()
-                , topicPath: path
-                }
-    , callback = arguments.length > 2 ? cb : function() {}
-  this._outstandingReqs[message.requestId] = function(err) {
-    if (err) {
-      // TODO(tec27): emit an error if no callback is set?
-      return callback.apply(self, arguments)
+  _doConnect() {
+    if (this.opts.connectTimeout) {
+      this._connectTimer = setTimeout(() => {
+        this.emit('connect_timeout')
+        this.disconnect()
+        this._skipReconnect = false
+        this._onClose('connect timeout')
+      }, this.opts.connectTimeout)
     }
 
-    if (!self._subscriptions[path]) {
-      self._subscriptions[path] = [ listener ]
-    } else {
-      if (self._subscriptions[path].indexOf(listener) != -1) {
-        // listener already registered, no need to resubscribe with it
-        return callback.call(self)
+    this.conn = eio(this.host, this.opts)
+    this.conn.on('open', ::this._onOpen)
+      .on('message', ::this._onMessage)
+      .on('close', ::this._onClose)
+      .on('error', ::this._onError)
+  }
+
+  // Connect to the server. If already connected, this will be a no-op.
+  connect() {
+    if (this.conn) return
+
+    this._skipReconnect = false
+    this._wasOpened = false
+    this._doConnect()
+  }
+
+  reconnect() {
+    if (this.conn || this._skipReconnect || this._backoffTimer) {
+      return
+    }
+
+    if (this._backoff.attempts >= this.opts.reconnectionAttempts) {
+      this._backoff.reset()
+      this.emit('reconnect_failed')
+      return
+    }
+
+    this._backoffTimer = setTimeout(() => {
+      this._backoffTimer = null
+      this.emit('reconnecting', this._backoff.attempts)
+
+      if (this._skipReconnect || this.conn) return
+
+      this._doConnect()
+    }, this._backoff.duration())
+  }
+
+  // Disconnect from the server. If not already connected, this will be a no-op.
+  disconnect() {
+    this._skipReconnect = true
+    if (this._backoffTimer) {
+      clearTimeout(this._backoffTimer)
+      this._backoffTimer = null
+    }
+
+    if (!this.conn) return
+
+    this.conn.close()
+  }
+
+  // Registers a handler function to respond to PUBLISHes to paths matching a specified pattern.
+  // Handlers are normal functions of the form:
+  // function({ route, params, splats }, data)
+  //
+  // PUBLISHes that don't match a route will be emitted as an 'unhandled' event on this object,
+  // which can be useful to track in development mode.
+  registerRoute(pathPattern, handler) {
+    this._router.addRoute(pathPattern, handler)
+  }
+
+  _onPublish({ path, data }) {
+    const route = this._router.match(path)
+    if (!route) {
+      this.emit('unhandled', { path, data })
+      return
+    }
+
+    route.action({ route: route.route, params: route.params, splats: route.splats }, data)
+  }
+
+  // Invoke a remote method on the server, specified via a path. Optionally, data can be specified
+  // to send along with the call (will be JSON encoded). A Promise will be returned, resolved or
+  // rejected with the result or error (respectively) from the server.
+  invoke(path, data) {
+    const id = cuid()
+    const p = new Promise((resolve, reject) => {
+      if (!this.conn) return reject(new Error('Not connected'))
+
+      this._outstanding = this._outstanding.set(id, { resolve, reject })
+      this.conn.send(encode(INVOKE, data, id, path))
+    }).catch(err => {
+      // Convert error-like objects back to Errors
+      if (err.message && err.status) {
+        const converted = new Error(err.message)
+        converted.status = err.status
+        converted.body = err.body
+        throw converted
       }
-      self._subscriptions[path].push(listener)
-    }
 
-    callback.apply(self)
-  }
-  this.socket.sendMessage(message)
-}
+      throw err
+    })
 
-// unsubscribe('/my/path', function(event) { }, function(err) { })
-NydusClient.prototype.unsubscribe = function(path, listener, cb) {
-  var self = this
-  // TODO(tec27): handle cases where we aren't connected yet? Probably need to rework how the
-  // similar handling works for subscribe to make that possible
-  if (!self._subscriptions[path]) {
-    return
-  }
-  var index = self._subscriptions[path].indexOf(listener)
-  if (index == -1) {
-    return
+    p.then(() => this._outstanding = this._outstanding.delete(id),
+      () => this._outstanding = this._outstanding.delete(id))
+
+    return p
   }
 
-  var message = { type: protocol.UNSUBSCRIBE
-                , requestId: this._getRequestId()
-                , topicPath: path
-                }
-    , callback = arguments.length > 2 ? cb : function() {}
-  this._outstandingReqs[message.requestId] = function(err) {
-    if (err) {
-      // TODO(tec27): emit an error if no callback is set?
-      return callback.apply(self, arguments)
-    }
-
-    var index = self._subscriptions[path].indexOf(listener)
-    if (index != -1) {
-      self._subscriptions[path].splice(index, 1)
-    }
-    callback.apply(self)
-  }
-  this.socket.sendMessage(message)
-}
-
-// publish('/my/path', ..., [ excludeMe ])
-NydusClient.prototype.publish = function(path, event, excludeMe) {
-  var message = { type: protocol.PUBLISH
-                , topicPath: path
-                , event: event
-                , excludeMe: excludeMe
-                }
-  this.socket.sendMessage(message)
-}
-
-NydusClient.prototype._getRequestId = function() {
-  return cuid.slug()
-}
-
-NydusClient.prototype._onConnect = function() {
-  var self = this
-  this._reconnectAttempts = 0
-  this._backo.reset()
-  this.socket.once('message:welcome', onWelcome)
-    .once('disconnect', onDisconnect)
-
-  var timeout = setTimeout(function() {
-    self.socket.removeListener('message:welcome', onWelcome)
-    this._forcedDisconnect = true
-    self.socket.close()
-    self.emit('error', new Error('Server did not send a WELCOME on connect'))
-  }, NydusClient.WELCOME_TIMEOUT)
-
-  function onWelcome(message) {
-    clearTimeout(timeout)
-    self.socket.removeListener('disconnect', onDisconnect)
-    if (message.protocolVersion != protocol.protocolVersion) {
-      this._forcedDisconnect = true
-      self.socket.close()
-      self.emit('error', new Error('Server is using an unsupported protocol version: ' +
-          message.protocolVersion))
-    } else {
-      self._resetPingTimeout()
-      self.readyState = 'connected'
-      self.emit('connect')
-    }
-  }
-
-  function onDisconnect(message) {
-    clearTimeout(timeout)
-    self.socket.removeListener('message:welcome', onWelcome)
-  }
-}
-
-NydusClient.prototype._onError = function(err) {
-  this.emit('error', err)
-}
-
-NydusClient.prototype._onDisconnect = function(event) {
-  if (typeof this._pingTimeout != 'undefined') {
-    clearTimeout(this._pingTimeout)
-    delete this._pingTimeout
-  }
-
-  if (event && event.code == 4001) {
-    this.emit('error', new Error('Unauthorized'))
-  }
-
-  this.readyState = 'disconnected'
-  this.emit('disconnect')
-
-  // TODO(tec27): maybe automatically resubscribe on reconnect instead?
-  this._outstandingReqs = Object.create(null)
-  this._subscriptions = Object.create(null)
-
-  var shouldReconnect = !this._forcedDisconnect && (event && event.code != 4001)
-  if (shouldReconnect) {
-    this._attemptReconnect()
-  }
-  this._forcedDisconnect = false
-}
-
-NydusClient.prototype._attemptReconnect = function() {
-  if (this._options.maxReconnectAttempts > 0 &&
-      this._reconnectAttempts > this._options.maxReconnectAttempts) {
-    return
-  }
-
-  this.reconnectAttempts++
-
-  var self = this
-  setTimeout(function() {
-    self.socket.open()
-  }, this._backo.duration())
-}
-
-NydusClient.prototype._onCallMessage = function(message) {
-  var self = this
-    , route = this.router.matchCall(message.procPath)
-    , sent = false
-  if (!route) {
-    var response =  { type: protocol.ERROR
-                    , requestId: message.requestId
-                    , errorCode: 404
-                    , errorDesc: 'not found'
-                    , errorDetails: message.procPath + ' could not be found'
-                    }
-    return this.socket.sendMessage(response)
-  }
-
-  var req = { socket: this._socket
-            , requestId: message.requestId
-            , route: route.route
-            , params: route.params
-            , splats: route.splats
-            }
-    , res = { complete: complete, fail: fail }
-    , args = [ req, res ].concat(message.params)
-
-  route.fn.apply(this, args)
-
-  function complete(results) {
-    if (sent) {
-      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+  _onInvokeResponse({ type, id, data }) {
+    const p = this._outstanding.get(id)
+    if (!p) {
+      this.emit('error', 'Unknown invoke id')
       return
     }
-    var args = Array.prototype.slice.apply(arguments)
-      , response =  { type: protocol.RESULT
-                    , requestId: message.requestId
-                    , results: args
-                    }
-    self.socket.sendMessage(response)
-    sent = true
+
+    p[type === RESULT ? 'resolve' : 'reject'](data)
   }
 
-  function fail(errorCode, errorDesc, errorDetails) {
-    if (sent) {
-      self.emit('error', new Error('Only one response can be sent for a CALL.'))
+  _onOpen() {
+    this._clearConnectTimer()
+    this._wasOpened = true
+    this._backoff.reset()
+    this.emit('connect')
+  }
+
+  _onMessage(msg) {
+    const decoded = decode(msg)
+    switch (decoded.type) {
+      case PARSER_ERROR:
+        this.conn.close() // will cause a call to _onClose
+        break
+      case WELCOME:
+        if (decoded.data !== protocolVersion) {
+          this.emit('error', 'Server has incompatible protocol version: ' + protocolVersion)
+          this.conn.close()
+        }
+        break
+      case RESULT:
+      case ERROR:
+        this._onInvokeResponse(decoded)
+        break
+      case PUBLISH:
+        this._onPublish(decoded)
+        break
+    }
+  }
+
+  _onClose(reason, details) {
+    this._clearConnectTimer()
+    this.conn = null
+
+    if (!this._wasOpened) {
+      this.emit('connect_failed')
+      this.reconnect()
+      // Sockets can emit 'close' even if the connection was never actually opened. Don't emit emits
+      // upstream in that case, since they're rather unnecessary
       return
     }
-    var response =  { type: protocol.ERROR
-                    , requestId: message.requestId
-                    , errorCode: errorCode
-                    , errorDesc: errorDesc
-                    , errorDetails: errorDetails
-                    }
-    self.socket.sendMessage(response)
-    sent = true
+
+    this.emit('disconnect', reason, details)
+    this._outstanding = this._outstanding.clear()
+    this._wasOpened = false
+    this.reconnect()
+  }
+
+  _onError(err) {
+    this._clearConnectTimer()
+    if (err.type === 'TransportError' && err.message === 'xhr poll error') {
+      this._onClose(err)
+      return
+    }
+
+    this.emit('error', err)
+  }
+
+  _clearConnectTimer() {
+    if (this._connectTimer) {
+      clearTimeout(this._connectTimer)
+      this._connectTimer = null
+    }
   }
 }
 
-NydusClient.prototype._onResultMessage = function(message) {
-  var cb = this._outstandingReqs[message.requestId]
-  if (!cb) {
-    return this.emit('error',
-      new Error('Received a result for an unrecognized requestId: ' + message.requestId))
-  }
-  delete this._outstandingReqs[message.requestId]
-
-  var results = [ null /* err */ ].concat(message.results)
-  cb.apply(this, results)
-}
-
-NydusClient.prototype._onErrorMessage = function(message) {
-  var cb = this._outstandingReqs[message.requestId]
-  if (!cb) {
-    return this.emit('error',
-      new Error('Received an error for an unrecognized requestId: ' + message.requestId))
-  }
-  delete this._outstandingReqs[message.requestId]
-
-  var err = { code: message.errorCode
-            , desc: message.errorDesc
-            , details: message.errorDetails
-            }
-  cb.call(this, err)
-}
-
-NydusClient.prototype._onSubscribeMessage = function(message) {
-  // We don't support subscribing to clients, so give the server an error
-  var reply = { type: protocol.ERROR
-              , requestId: message.requestId
-              , errorCode: 405
-              , errorDesc: 'method not allowed'
-              , errorDetails: 'client does not support subscriptions'
-              }
-  this.socket.sendMessage(reply)
-}
-
-NydusClient.prototype._onUnsubscribeMessage = function(message) {
-  // We don't support subscribing to clients, so any unsubscribe is also an error
-  var reply = { type: protocol.ERROR
-              , requestId: message.requestId
-              , errorCode: 405
-              , errorDesc: 'method not allowed'
-              , errorDetails: 'client does not support subscriptions'
-              }
-  this.socket.sendMessage(reply)
-}
-
-NydusClient.prototype._onPublishMessage = function(message) {
-  // We don't support publishing events to clients, so drop the message
-}
-
-NydusClient.prototype._onEventMessage = function(message) {
-  if (!this._subscriptions[message.topicPath]) {
-    return
-  }
-
-  var listeners = this._subscriptions[message.topicPath]
-  for (var i = 0, len = listeners.length; i < len; i++) {
-    listeners[i].call(this, message.event)
-  }
-}
-
-NydusClient.prototype._onRevokeMessage = function(message) {
-  if (!this._subscriptions[message.topicPath]) {
-    return
-  }
-
-  this.emit('revoked', message.topicPath)
-  delete this._subscriptions[message.topicPath]
-}
-
-NydusClient.prototype._setupPong = function() {
-  var self = this
-  this.router.call('/_/ping', function(req, res) {
-    res.complete()
-    self._resetPingTimeout()
-  })
-}
-
-NydusClient.prototype._resetPingTimeout = function() {
-  if (typeof this._pingTimeout != 'undefined') {
-    clearTimeout(this._pingTimeout)
-  }
-
-  var self = this
-  this._pingTimeout = setTimeout(onTimeout, this._options.pingTimeout)
-  function onTimeout() {
-    delete self._pingTimeout
-    self.socket.close()
-  }
+export default function createClient(host, opts) {
+  return new NydusClient(host, opts)
 }
