@@ -31,8 +31,11 @@ describe('client', () => {
 
     port = await new Promise((resolve, reject) => {
       httpServer.listen(0, function(err) {
-        if (err) return reject(err)
-        resolve(httpServer.address().port)
+        if (err) {
+          reject(err)
+        } else {
+          resolve(httpServer.address().port)
+        }
       })
     })
   })
@@ -95,6 +98,7 @@ describe('client', () => {
       expect(err).to.be.an.instanceOf(Error)
       expect(err.status).to.be.eql(420)
       expect(err.message).to.be.eql('Ya done goofed')
+      return Promise.resolve()
     }
   })
 
@@ -106,6 +110,7 @@ describe('client', () => {
     } catch (err) {
       expect(err).to.be.an.instanceOf(Error)
       expect(err.message).to.be.eql('Not connected')
+      return Promise.resolve()
     }
   })
 

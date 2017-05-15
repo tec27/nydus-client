@@ -131,7 +131,10 @@ export class NydusClient extends EventEmitter {
   invoke(path, data) {
     const id = cuid()
     const p = new Promise((resolve, reject) => {
-      if (!this.conn) return reject(new Error('Not connected'))
+      if (!this.conn) {
+        reject(new Error('Not connected'))
+        return
+      }
 
       this._outstanding = this._outstanding.set(id, { resolve, reject })
       this.conn.send(encode(INVOKE, data, id, path))
@@ -147,8 +150,8 @@ export class NydusClient extends EventEmitter {
       throw err
     })
 
-    p.then(() => this._outstanding = this._outstanding.delete(id),
-      () => this._outstanding = this._outstanding.delete(id))
+    p.then(() => { this._outstanding = this._outstanding.delete(id) },
+      () => { this._outstanding = this._outstanding.delete(id) })
 
     return p
   }
