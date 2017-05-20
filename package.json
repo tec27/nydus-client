@@ -1,6 +1,6 @@
 {
   "name": "nydus-client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
   "main": "lib/node/index.js",
   "module": "lib/modules/index.js",
