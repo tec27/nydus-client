@@ -1,4 +1,33 @@
 {
-  "stage": 0,
-  "loose": "all"
+  "env": {
+    "browser": {
+      "presets": [
+        [
+          "env", {
+            "targets": { "browsers": "last 2 versions" },
+            "modules": false
+          }
+        ]
+      ]
+    },
+    "modules": {
+      "presets": [
+        [
+          "env", {
+            "targets": { "node": 7.6 },
+            "modules": false
+          }
+        ]
+      ]
+    },
+    "development": {
+      "presets": [
+        [
+          "env", {
+            "targets": { "node": 7.6 }
+          }
+        ]
+      ]
+    }
+  }
 }

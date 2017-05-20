@@ -56,10 +56,10 @@ export class NydusClient extends EventEmitter {
     }
 
     this.conn = eio(this.host, this.opts)
-    this.conn.on('open', ::this._onOpen)
-      .on('message', ::this._onMessage)
-      .on('close', ::this._onClose)
-      .on('error', ::this._onError)
+    this.conn.on('open', this._onOpen.bind(this))
+      .on('message', this._onMessage.bind(this))
+      .on('close', this._onClose.bind(this))
+      .on('error', this._onError.bind(this))
   }
 
   // Connect to the server. If already connected, this will be a no-op.
