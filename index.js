@@ -219,6 +219,14 @@ export class NydusClient extends EventEmitter {
       this._onClose(err)
       return
     }
+    if (this._skipReconnect && err.type === 'TransportError' && err.description &&
+        err.description.message &&
+        err.description.message.includes('closed before the connection was established')) {
+      // ws sometimes throws errors if you disconnect a socket that was in the process of
+      // reconnecting. Since the disconnect was requested (_skipReconnect is true), this seems
+      // spurious, so we just ignore it
+      return
+    }
 
     this.emit('error', err)
   }
