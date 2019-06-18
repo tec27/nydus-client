@@ -21,7 +21,7 @@ describe('client', () => {
   let httpServer
   let nydusServer
   let port
-  const clients = []
+  let clients = []
 
   beforeEach(async () => {
     httpServer = http.createServer()
@@ -46,6 +46,10 @@ describe('client', () => {
     }
     nydusServer.close()
     httpServer.close()
+
+    clients = []
+    nydusServer = undefined
+    httpServer = undefined
   })
 
   async function connectClient(fn) {
@@ -53,6 +57,7 @@ describe('client', () => {
       reconnectionDelay: 1,
       reconnectionJitter: 0,
       connectTimeout: 30,
+      transports: ['websocket'],
     })
     clients.push(c)
     if (fn) fn(c)

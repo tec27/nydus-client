@@ -3,7 +3,7 @@
     "browser": {
       "presets": [
         [
-          "env", {
+          "@babel/preset-env", {
             "targets": { "browsers": "last 2 versions" },
             "modules": false
           }
@@ -13,8 +13,8 @@
     "modules": {
       "presets": [
         [
-          "env", {
-            "targets": { "node": 7.6 },
+          "@babel/preset-env", {
+            "targets": { "node": "12.4" },
             "modules": false
           }
         ]
@@ -23,8 +23,8 @@
     "development": {
       "presets": [
         [
-          "env", {
-            "targets": { "node": 7.6 }
+          "@babel/preset-env", {
+            "targets": { "node": "12.4" }
           }
         ]
       ]
