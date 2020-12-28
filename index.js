@@ -56,7 +56,8 @@ export class NydusClient extends EventEmitter {
     }
 
     this.conn = eio(this.host, this.opts)
-    this.conn.on('open', this._onOpen.bind(this))
+    this.conn
+      .on('open', this._onOpen.bind(this))
       .on('message', this._onMessage.bind(this))
       .on('close', this._onClose.bind(this))
       .on('error', this._onError.bind(this))
@@ -150,8 +151,14 @@ export class NydusClient extends EventEmitter {
       throw err
     })
 
-    p.then(() => { this._outstanding = this._outstanding.delete(id) },
-      () => { this._outstanding = this._outstanding.delete(id) })
+    p.then(
+      () => {
+        this._outstanding = this._outstanding.delete(id)
+      },
+      () => {
+        this._outstanding = this._outstanding.delete(id)
+      },
+    )
 
     return p
   }
@@ -219,9 +226,13 @@ export class NydusClient extends EventEmitter {
       this._onClose(err)
       return
     }
-    if (this._skipReconnect && err.type === 'TransportError' && err.description &&
-        err.description.message &&
-        err.description.message.includes('closed before the connection was established')) {
+    if (
+      this._skipReconnect &&
+      err.type === 'TransportError' &&
+      err.description &&
+      err.description.message &&
+      err.description.message.includes('closed before the connection was established')
+    ) {
       // ws sometimes throws errors if you disconnect a socket that was in the process of
       // reconnecting. Since the disconnect was requested (_skipReconnect is true), this seems
       // spurious, so we just ignore it

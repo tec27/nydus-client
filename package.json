@@ -2,19 +2,17 @@
   "name": "nydus-client",
   "version": "1.1.0",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
-  "main": "lib/node/index.js",
-  "module": "lib/modules/index.js",
-  "browser": "lib/browser/index.js",
+  "types": "dist/index.d.ts",
+  "main": "dist/cjs/index.js",
+  "module": "dist/modules/index.js",
   "scripts": {
-    "autotest": "mocha --watch -R spec --require @babel/register --recursive test/",
-    "build": "yarn build-browser && yarn build-node && yarn build-modules",
-    "build-browser": "cross-env BABEL_ENV=browser babel index.js --out-dir lib/browser/",
-    "build-node": "babel index.js --out-dir lib/node/",
-    "build-modules": "cross-env BABEL_ENV=modules babel index.js --out-dir lib/modules/",
-    "clean": "rimraf lib",
-    "lint": "eslint --ext .js ./",
-    "prepublish": "yarn run lint && yarn run test && yarn run clean && yarn run build",
-    "test": "mocha -R spec --require @babel/register --recursive test/"
+    "autotest": "ts-mocha -w --watch-extensions ts -R spec test/**.ts",
+    "build": "tsc && tsc -p tsconfig-cjs.json",
+    "clean": "rimraf dist",
+    "lint": "eslint --ext .js,.ts ./",
+    "prepublishOnly": "yarn run lint && yarn run test && yarn run clean && yarn run build",
+    "test": "ts-mocha -R spec test/**.ts",
+    "watch": "tsc -w"
   },
   "repository": {
     "type": "git",
@@ -33,6 +31,9 @@
     "url": "https://github.com/tec27/nydus-client/issues"
   },
   "homepage": "https://github.com/tec27/nydus-client",
+  "files": [
+    "dist/**"
+  ],
   "dependencies": {
     "backo": "^1.1.0",
     "cuid": "^2.1.6",
@@ -42,18 +43,22 @@
     "ruta3": "^2.0.0"
   },
   "devDependencies": {
-    "@babel/cli": "^7.4.4",
-    "@babel/core": "^7.4.5",
-    "@babel/preset-env": "^7.4.5",
-    "@babel/register": "^7.4.4",
-    "babel-eslint": "^10.0.2",
+    "@types/chai": "^4.2.14",
+    "@types/debug": "^4.1.5",
+    "@types/mocha": "^8.2.0",
+    "@typescript-eslint/eslint-plugin": "^4.11.0",
+    "@typescript-eslint/parser": "^4.11.0",
     "chai": "^4.2.0",
     "chai-as-promised": "^7.1.1",
     "cross-env": "^7.0.3",
-    "eslint": "^5.16.0",
-    "eslint-plugin-babel": "^5.3.0",
-    "mocha": "^6.1.4",
+    "eslint": "^7.16.0",
+    "eslint-config-prettier": "^7.1.0",
+    "eslint-plugin-prettier": "^3.3.0",
+    "mocha": "^8.2.1",
     "nydus": "^1.0.4",
-    "rimraf": "^2.6.3"
+    "prettier": "^2.2.1",
+    "rimraf": "^3.0.2",
+    "ts-mocha": "^8.0.0",
+    "typescript": "^4.1.3"
   }
 }

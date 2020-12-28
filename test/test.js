@@ -30,7 +30,7 @@ describe('client', () => {
     nydusServer.registerRoute('/errorMe', errorMeHandler)
 
     port = await new Promise((resolve, reject) => {
-      httpServer.listen(0, function(err) {
+      httpServer.listen(0, function (err) {
         if (err) {
           reject(err)
         } else {
@@ -62,8 +62,7 @@ describe('client', () => {
     clients.push(c)
     if (fn) fn(c)
     const p = new Promise((resolve, reject) => {
-      c.once('connect', () => resolve(c))
-        .once('error', err => reject(err))
+      c.once('connect', () => resolve(c)).once('error', err => reject(err))
     })
     c.connect()
     return await p
@@ -135,12 +134,12 @@ describe('client', () => {
     expect(route).to.be.eql({
       route: '/publishes/:name/*',
       params: { name: 'whoever' },
-      splats: [ 'splatsplatsplat' ],
+      splats: ['splatsplatsplat'],
     })
     expect(data).to.be.eql({ awesome: true })
   })
 
-  it('should emit \'unhandled\' events when a PUBLISH goes unhandled', async () => {
+  it("should emit 'unhandled' events when a PUBLISH goes unhandled", async () => {
     nydusServer.on('connection', sC => {
       nydusServer.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
     })
@@ -162,14 +161,17 @@ describe('client', () => {
       c.once('reconnecting', attempt => resolve(attempt))
     })
 
-    const p2 = p.then(attempt1 => new Promise(resolve => {
-      c.once('reconnecting', attempt2 => resolve([ attempt1, attempt2 ]))
-    }))
+    const p2 = p.then(
+      attempt1 =>
+        new Promise(resolve => {
+          c.once('reconnecting', attempt2 => resolve([attempt1, attempt2]))
+        }),
+    )
 
     nydusServer.close()
     httpServer.close()
     const attempts = await p2
 
-    expect(attempts).to.be.eql([ 1, 2 ])
+    expect(attempts).to.be.eql([1, 2])
   })
 })
