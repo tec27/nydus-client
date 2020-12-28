@@ -1,27 +1,26 @@
 import chai, { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 import http from 'http'
+import { AddressInfo } from 'net'
 
 import nydus from 'nydus'
-import client from '../index'
+import client, { InvokeError, NydusClient, RouteInfo } from '../index'
 
 chai.use(chaiAsPromised)
 
-async function helloHandler(data, next) {
+async function helloHandler() {
   return 'hi'
 }
 
-async function errorMeHandler(data, next) {
-  const err = new Error('Ya done goofed')
-  err.status = 420
-  throw err
+async function errorMeHandler() {
+  throw new InvokeError('Ya done goofed', 420)
 }
 
 describe('client', () => {
-  let httpServer
-  let nydusServer
-  let port
-  let clients = []
+  let httpServer: http.Server | undefined
+  let nydusServer: any
+  let port: number
+  let clients: NydusClient[] = []
 
   beforeEach(async () => {
     httpServer = http.createServer()
@@ -29,13 +28,9 @@ describe('client', () => {
     nydusServer.registerRoute('/hello', helloHandler)
     nydusServer.registerRoute('/errorMe', errorMeHandler)
 
-    port = await new Promise((resolve, reject) => {
-      httpServer.listen(0, function (err) {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(httpServer.address().port)
-        }
+    port = await new Promise(resolve => {
+      httpServer.listen(0, () => {
+        resolve((httpServer.address() as AddressInfo).port)
       })
     })
   })
@@ -52,7 +47,7 @@ describe('client', () => {
     httpServer = undefined
   })
 
-  async function connectClient(fn) {
+  async function connectClient(fn?: (client: NydusClient) => void): Promise<NydusClient> {
     const c = client('ws://localhost:' + port, {
       reconnectionDelay: 1,
       reconnectionJitter: 0,
@@ -61,7 +56,7 @@ describe('client', () => {
     })
     clients.push(c)
     if (fn) fn(c)
-    const p = new Promise((resolve, reject) => {
+    const p = new Promise<NydusClient>((resolve, reject) => {
       c.once('connect', () => resolve(c)).once('error', err => reject(err))
     })
     c.connect()
@@ -73,13 +68,13 @@ describe('client', () => {
   })
 
   it('should disconnect from a server', async () => {
-    const sDisc = new Promise(resolve => {
+    const sDisc = new Promise<void>(resolve => {
       nydusServer.on('connection', c => {
         c.on('close', () => resolve())
       })
     })
     const c = await connectClient()
-    const cDisc = new Promise(resolve => c.on('disconnect', () => resolve()))
+    const cDisc = new Promise<void>(resolve => c.on('disconnect', () => resolve()))
 
     c.disconnect()
     return await Promise.all([sDisc, cDisc])
@@ -124,7 +119,7 @@ describe('client', () => {
     })
 
     const c = await connectClient()
-    const p = new Promise((resolve, reject) => {
+    const p = new Promise<{ route: RouteInfo; data: any }>(resolve => {
       c.registerRoute('/publishes/:name/*', (route, data) => resolve({ route, data }))
     })
 
@@ -144,7 +139,7 @@ describe('client', () => {
       nydusServer.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
     })
     const c = await connectClient()
-    const p = new Promise((resolve, reject) => {
+    const p = new Promise<{ path: string; data: any }>(resolve => {
       c.once('unhandled', unhandled => resolve(unhandled))
     })
 

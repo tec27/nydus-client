@@ -6,12 +6,12 @@
   "main": "dist/cjs/index.js",
   "module": "dist/modules/index.js",
   "scripts": {
-    "autotest": "ts-mocha -w --watch-extensions ts -R spec test/**.ts",
+    "autotest": "ts-mocha --p tsconfig-cjs.json w --watch-extensions ts -R spec test/**.ts",
     "build": "tsc && tsc -p tsconfig-cjs.json",
     "clean": "rimraf dist",
     "lint": "eslint --ext .js,.ts ./",
     "prepublishOnly": "yarn run lint && yarn run test && yarn run clean && yarn run build",
-    "test": "ts-mocha -R spec test/**.ts",
+    "test": "ts-mocha -p tsconfig-cjs.json -R spec test/**.ts",
     "watch": "tsc -w"
   },
   "repository": {
@@ -35,16 +35,18 @@
     "dist/**"
   ],
   "dependencies": {
-    "backo": "^1.1.0",
+    "backo2": "^1.0.2",
     "cuid": "^2.1.6",
     "engine.io-client": "^4.0.5",
     "immutable": "^4.0.0-rc.12",
-    "nydus-protocol": "^1.0.0",
+    "nydus-protocol": "^2.0.0",
     "ruta3": "^2.0.0"
   },
   "devDependencies": {
+    "@types/backo2": "^1.0.1",
     "@types/chai": "^4.2.14",
     "@types/debug": "^4.1.5",
+    "@types/engine.io-client": "^3.1.4",
     "@types/mocha": "^8.2.0",
     "@typescript-eslint/eslint-plugin": "^4.11.0",
     "@typescript-eslint/parser": "^4.11.0",
