@@ -3,7 +3,7 @@ import chaiAsPromised from 'chai-as-promised'
 import http from 'http'
 import { AddressInfo } from 'net'
 
-import nydus from 'nydus'
+import nydus, { NydusServer } from 'nydus'
 import client, { InvokeError, NydusClient, RouteInfo } from '../index'
 
 chai.use(chaiAsPromised)
@@ -18,7 +18,7 @@ async function errorMeHandler() {
 
 describe('client', () => {
   let httpServer: http.Server | undefined
-  let nydusServer: any
+  let nydusServer: NydusServer
   let port: number
   let clients: NydusClient[] = []
 
