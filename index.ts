@@ -1,6 +1,5 @@
 import eio from 'engine.io-client'
 import { EventEmitter } from 'events'
-import { Map } from 'immutable'
 import cuid from 'cuid'
 import ruta from 'ruta3'
 import Backoff from 'backo2'
@@ -108,7 +107,7 @@ export class NydusClient extends EventEmitter {
   readonly opts: Partial<NydusClientOptions>
   conn: ExpandedSocket | null = null
 
-  private outstanding = Map<string, PromiseCompleters>()
+  private outstanding = new Map<string, PromiseCompleters>()
   private router = ruta<RouteHandler>()
   private backoff: Backoff
 
@@ -232,7 +231,7 @@ export class NydusClient extends EventEmitter {
         return
       }
 
-      this.outstanding = this.outstanding.set(id, { resolve, reject })
+      this.outstanding.set(id, { resolve, reject })
       this.conn.send(encode(MessageType.Invoke, data, id, path))
     }).catch(err => {
       // Convert error-like objects back to Errors
@@ -244,14 +243,7 @@ export class NydusClient extends EventEmitter {
       throw err
     })
 
-    p.then(
-      () => {
-        this.outstanding = this.outstanding.delete(id)
-      },
-      () => {
-        this.outstanding = this.outstanding.delete(id)
-      },
-    )
+    p.finally(() => this.outstanding.delete(id))
 
     return p
   }
@@ -311,7 +303,7 @@ export class NydusClient extends EventEmitter {
     }
 
     this.emit('disconnect', reason, details)
-    this.outstanding = this.outstanding.clear()
+    this.outstanding.clear()
     this.wasOpened = false
     this.reconnect()
   }
