@@ -86,6 +86,7 @@ interface NydusEvents {
 export declare interface NydusClient {
   emit<U extends keyof NydusEvents>(event: U, ...args: Parameters<NydusEvents[U]>): boolean
   on<U extends keyof NydusEvents>(event: U, listener: NydusEvents[U]): this
+  once<U extends keyof NydusEvents>(event: U, listener: NydusEvents[U]): this
 }
 
 export class InvokeError extends Error {
