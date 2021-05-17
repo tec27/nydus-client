@@ -1,5 +1,4 @@
 import eio from 'engine.io-client'
-import { EventEmitter } from 'events'
 import cuid from 'cuid'
 import ruta from 'ruta3'
 import Backoff from 'backo2'
@@ -12,6 +11,7 @@ import {
   NydusErrorMessage,
   NydusPublishMessage,
 } from 'nydus-protocol'
+import { TypedEventEmitter } from './typed-emitter'
 
 export { protocolVersion }
 
@@ -83,12 +83,6 @@ interface NydusEvents {
   connect_failed: () => void
 }
 
-export declare interface NydusClient {
-  emit<U extends keyof NydusEvents>(event: U, ...args: Parameters<NydusEvents[U]>): boolean
-  on<U extends keyof NydusEvents>(event: U, listener: NydusEvents[U]): this
-  once<U extends keyof NydusEvents>(event: U, listener: NydusEvents[U]): this
-}
-
 export class InvokeError extends Error {
   readonly status: number
   readonly body: any
@@ -102,8 +96,7 @@ export class InvokeError extends Error {
 
 type PromiseCompleters = { resolve: (value: unknown) => void; reject: (reason: any) => void }
 
-// eslint-disable-next-line no-redeclare
-export class NydusClient extends EventEmitter {
+export class NydusClient extends TypedEventEmitter<NydusEvents> {
   readonly host: string
   readonly opts: Partial<NydusClientOptions>
   conn: ExpandedSocket | null = null
