@@ -1,4 +1,4 @@
-import eio from 'engine.io-client'
+import { SocketOptions as EngineIoSocketOptions, Socket as EngineIoSocket } from 'engine.io-client'
 import cuid from 'cuid'
 import ruta from 'ruta3'
 import Backoff from 'backo2'
@@ -11,11 +11,11 @@ import {
   NydusErrorMessage,
   NydusPublishMessage,
 } from 'nydus-protocol'
-import { TypedEventEmitter } from './typed-emitter'
+import { TypedEventEmitter, EventMap } from './typed-emitter'
 
 export { protocolVersion }
 
-export interface NydusClientOptions extends eio.SocketOptions {
+export interface NydusClientOptions extends EngineIoSocketOptions {
   /**
    * How long before a connection attempt should be considered failed. Optional, will not timeout
    * if not specified.
@@ -39,7 +39,7 @@ export interface NydusClientOptions extends eio.SocketOptions {
   reconnectionJitter: number
 }
 
-interface ExpandedSocket extends eio.Socket {
+interface ExpandedSocket extends Omit<EngineIoSocket, 'readyState'> {
   readonly readyState: string
 }
 
@@ -60,7 +60,7 @@ export interface RouteInfo {
 
 export type RouteHandler = (routeInfo: RouteInfo, data: any) => void
 
-interface NydusEvents {
+interface NydusEvents extends EventMap {
   /** Fired when the connection succeeds. */
   connect: () => void
   /** Fired when the connection has been closed */
@@ -139,12 +139,12 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
       }, this.opts.connectTimeout)
     }
 
-    this.conn = eio(this.host, this.opts) as ExpandedSocket
+    this.conn = new EngineIoSocket(this.host, this.opts) as unknown as ExpandedSocket
     this.conn
       .on('open', this.onOpen.bind(this))
       .on('message', data => this.onMessage(data as string))
-      .on('close', this.onClose.bind(this))
-      .on('error', this.onError.bind(this))
+      .on('close', this.onClose.bind(this) as any)
+      .on('error', this.onError.bind(this) as any)
   }
 
   // Connect to the server. If already connected, this will be a no-op.
@@ -226,7 +226,7 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
       }
 
       this.outstanding.set(id, { resolve, reject })
-      this.conn.send(encode(MessageType.Invoke, data, id, path))
+      this.conn.send(encode(MessageType.Invoke, data, id, path), undefined)
     }).catch(err => {
       // Convert error-like objects back to Errors
       if (err.message && err.status) {
