@@ -18,7 +18,7 @@ async function errorMeHandler() {
 
 describe('client', () => {
   let httpServer: http.Server | undefined
-  let nydusServer: NydusServer
+  let nydusServer: NydusServer | undefined
   let port: number
   let clients: NydusClient[] = []
 
@@ -29,8 +29,8 @@ describe('client', () => {
     nydusServer.registerRoute('/errorMe', errorMeHandler)
 
     port = await new Promise(resolve => {
-      httpServer.listen(0, () => {
-        resolve((httpServer.address() as AddressInfo).port)
+      httpServer?.listen(0, () => {
+        resolve((httpServer!.address() as AddressInfo).port)
       })
     })
   })
@@ -39,8 +39,8 @@ describe('client', () => {
     for (const c of clients) {
       c.disconnect()
     }
-    nydusServer.close()
-    httpServer.close()
+    nydusServer?.close()
+    httpServer?.close()
 
     clients = []
     nydusServer = undefined
@@ -69,7 +69,7 @@ describe('client', () => {
 
   it('should disconnect from a server', async () => {
     const sDisc = new Promise<void>(resolve => {
-      nydusServer.on('connection', c => {
+      nydusServer!.on('connection', c => {
         c.on('close', () => resolve())
       })
     })
@@ -114,8 +114,8 @@ describe('client', () => {
   })
 
   it('should support registering for PUBLISHes', async () => {
-    nydusServer.on('connection', sC => {
-      nydusServer.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
+    nydusServer!.on('connection', sC => {
+      nydusServer!.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
     })
 
     const c = await connectClient()
@@ -123,7 +123,7 @@ describe('client', () => {
       c.registerRoute('/publishes/:name/*', (route, data) => resolve({ route, data }))
     })
 
-    nydusServer.publish('/publishes/whoever/splatsplatsplat', { awesome: true })
+    nydusServer!.publish('/publishes/whoever/splatsplatsplat', { awesome: true })
     const { route, data } = await p
 
     expect(route).to.be.eql({
@@ -135,15 +135,15 @@ describe('client', () => {
   })
 
   it("should emit 'unhandled' events when a PUBLISH goes unhandled", async () => {
-    nydusServer.on('connection', sC => {
-      nydusServer.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
+    nydusServer!.on('connection', sC => {
+      nydusServer!.subscribeClient(sC, '/publishes/whoever/splatsplatsplat')
     })
     const c = await connectClient()
     const p = new Promise<{ path: string; data: any }>(resolve => {
       c.once('unhandled', unhandled => resolve(unhandled))
     })
 
-    nydusServer.publish('/publishes/whoever/splatsplatsplat', { awesome: false })
+    nydusServer!.publish('/publishes/whoever/splatsplatsplat', { awesome: false })
     const { path, data } = await p
 
     expect(path).to.be.eql('/publishes/whoever/splatsplatsplat')
@@ -163,8 +163,8 @@ describe('client', () => {
         }),
     )
 
-    nydusServer.close()
-    httpServer.close()
+    nydusServer!.close()
+    httpServer!.close()
     const attempts = await p2
 
     expect(attempts).to.be.eql([1, 2])
