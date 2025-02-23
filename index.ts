@@ -219,7 +219,7 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
    */
   invoke(path: string, data?: any) {
     const id = cuid()
-    const p = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       if (!this.conn) {
         reject(new Error('Not connected'))
         return
@@ -227,19 +227,17 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
 
       this.outstanding.set(id, { resolve, reject })
       this.conn.send(encode(MessageType.Invoke, data, id, path), undefined)
-    }).catch(err => {
-      // Convert error-like objects back to Errors
-      if (err.message && err.status) {
-        const converted = new InvokeError(err.message, err.status, err.body)
-        throw converted
-      }
-
-      throw err
     })
+      .catch(err => {
+        // Convert error-like objects back to Errors
+        if (err.message && err.status) {
+          const converted = new InvokeError(err.message, err.status, err.body)
+          throw converted
+        }
 
-    p.finally(() => this.outstanding.delete(id))
-
-    return p
+        throw err
+      })
+      .finally(() => this.outstanding.delete(id))
   }
 
   private onInvokeResponse({ type, id, data }: NydusResultMessage<any> | NydusErrorMessage<any>) {
