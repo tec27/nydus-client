@@ -349,11 +349,6 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
       clearTimeout(this.connectTimer)
       this.connectTimer = null
     }
-
-    if (this.disconnectingPromise) {
-      this.disconnectingPromise = undefined
-      this.disconnectingResolver = undefined
-    }
   }
 }
 
