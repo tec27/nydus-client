@@ -1,4 +1,5 @@
-import chai, { expect } from 'chai'
+import * as chai from 'chai'
+import { expect } from 'chai'
 import chaiAsPromised from 'chai-as-promised'
 import http from 'http'
 import { AddressInfo } from 'net'
@@ -20,11 +21,20 @@ describe('client', () => {
   let httpServer: http.Server | undefined
   let nydusServer: NydusServer | undefined
   let port: number
-  let clients: NydusClient[] = []
+  const clients: NydusClient[] = []
+  const allowRequestFilters: Array<(req: http.IncomingMessage) => boolean> = []
 
   beforeEach(async () => {
+    const allowRequest = (
+      req: http.IncomingMessage,
+      cb: (err: string | null | undefined, allowed: boolean) => void,
+    ) => {
+      const allow = allowRequestFilters.every(f => f(req))
+      cb(null, allow)
+    }
+
     httpServer = http.createServer()
-    nydusServer = nydus(httpServer)
+    nydusServer = nydus(httpServer, { allowRequest })
     nydusServer.registerRoute('/hello', helloHandler)
     nydusServer.registerRoute('/errorMe', errorMeHandler)
 
@@ -42,20 +52,23 @@ describe('client', () => {
     nydusServer?.close()
     httpServer?.close()
 
-    clients = []
+    allowRequestFilters.length = 0
+    clients.length = 0
     nydusServer = undefined
     httpServer = undefined
   })
 
-  async function connectClient(fn?: (client: NydusClient) => void): Promise<NydusClient> {
+  async function connectClient(
+    fn?: (client: NydusClient) => void | Promise<void>,
+  ): Promise<NydusClient> {
     const c = client('ws://localhost:' + port, {
-      reconnectionDelay: 1,
+      reconnectionDelay: 2,
       reconnectionJitter: 0,
       connectTimeout: 30,
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
     })
     clients.push(c)
-    if (fn) fn(c)
+    if (fn) await Promise.resolve().then(() => fn(c))
     const p = new Promise<NydusClient>((resolve, reject) => {
       c.once('connect', () => resolve(c)).once('error', err => reject(err))
     })
@@ -168,5 +181,20 @@ describe('client', () => {
     const attempts = await p2
 
     expect(attempts).to.be.eql([1, 2])
+  })
+
+  it('should handle extremely quick disconnect -> connect calls', async () => {
+    return await connectClient(async c => {
+      const p = new Promise<void>(resolve => {
+        allowRequestFilters.push(() => {
+          c.disconnect()
+          resolve()
+          return true
+        })
+      })
+      c.connect()
+      await p
+      allowRequestFilters.length = 0
+    })
   })
 })

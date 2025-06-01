@@ -110,6 +110,8 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
 
   private wasOpened = false
   private skipReconnect = false
+  private disconnectingPromise: Promise<void> | undefined = undefined
+  private disconnectingResolver: (() => void) | undefined = undefined
 
   constructor(host: string, opts: Partial<NydusClientOptions> = {}) {
     super()
@@ -149,7 +151,15 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
 
   // Connect to the server. If already connected, this will be a no-op.
   connect() {
-    if (this.conn) return
+    if (this.conn) {
+      // If the socket is closing, wait for it to close before connecting again
+      if (this.conn.readyState === 'closing') {
+        this.disconnectingPromise!.then(() => {
+          this.connect()
+        }).catch(_err => {})
+      }
+      return
+    }
 
     this.skipReconnect = false
     this.wasOpened = false
@@ -186,6 +196,12 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
     }
 
     if (!this.conn) return
+
+    if (!this.disconnectingPromise) {
+      this.disconnectingPromise = new Promise<void>(resolve => {
+        this.disconnectingResolver = resolve
+      }).catch(_err => {})
+    }
 
     this.conn.close()
   }
@@ -286,6 +302,12 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
     this.clearConnectTimer()
     this.conn = null
 
+    if (this.disconnectingResolver) {
+      this.disconnectingResolver()
+      this.disconnectingResolver = undefined
+      this.disconnectingPromise = undefined
+    }
+
     if (!this.wasOpened) {
       this.emit('connect_failed')
       this.reconnect()
@@ -311,7 +333,7 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
       isTransportError(err) &&
       err.description &&
       err.description.message &&
-      err.description.message.includes('closed before the connection was established')
+      /closed before the connection (was|is) established/.test(err.description.message)
     ) {
       // ws sometimes throws errors if you disconnect a socket that was in the process of
       // reconnecting. Since the disconnect was requested (_skipReconnect is true), this seems
@@ -326,6 +348,11 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
     if (this.connectTimer) {
       clearTimeout(this.connectTimer)
       this.connectTimer = null
+    }
+
+    if (this.disconnectingPromise) {
+      this.disconnectingPromise = undefined
+      this.disconnectingResolver = undefined
     }
   }
 }
