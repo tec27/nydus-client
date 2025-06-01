@@ -11,7 +11,7 @@ import {
   NydusErrorMessage,
   NydusPublishMessage,
 } from 'nydus-protocol'
-import { TypedEventEmitter, EventMap } from './typed-emitter'
+import { TypedEventEmitter } from './typed-emitter'
 
 export { protocolVersion }
 
@@ -60,7 +60,7 @@ export interface RouteInfo {
 
 export type RouteHandler = (routeInfo: RouteInfo, data: any) => void
 
-interface NydusEvents extends EventMap {
+type NydusEvents = {
   /** Fired when the connection succeeds. */
   connect: () => void
   /** Fired when the connection has been closed */

@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events'
 import TypedEmitter, { EventMap } from 'typed-emitter'
 
-export { EventMap }
-
 /**
  * A typed version of the normal node EventEmitter class, such that emitted/handled events and
  * their associated parameters can be type-checked properly.
