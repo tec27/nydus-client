@@ -2,18 +2,23 @@
   "name": "nydus-client",
   "version": "4.0.6",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
-  "types": "dist/index.d.ts",
-  "main": "dist/cjs/index.js",
-  "module": "dist/modules/index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
-    "autotest": "ts-mocha --p tsconfig-cjs.json w --watch-extensions ts -R spec test/**.ts",
-    "build": "tsc && tsc -p tsconfig-cjs.json",
-    "clean": "rimraf dist",
+    "build": "tsup",
     "lint": "eslint --ext .js,.ts ./",
     "prepublishOnly": "pnpm run lint && pnpm run test && pnpm run clean && pnpm run build",
-    "test": "ts-mocha -p tsconfig-cjs.json -R spec test/**.ts",
+    "test": "mocha --import=tsx -R spec test/**.ts",
     "typecheck": "tsc --noEmit",
-    "watch": "tsc -w"
+    "watch": "tsup --watch"
   },
   "repository": {
     "type": "git",
@@ -39,13 +44,15 @@
     "backo2": "^1.0.2",
     "cuid": "^2.1.6",
     "engine.io-client": "^6.6.3",
-    "nydus-protocol": "^2.0.0",
+    "nydus-protocol": "^3.0.0",
     "ruta3": "^2.0.0",
-    "typed-emitter": "^2.1.0"
+    "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
+    "@swc/core": "^1.12.0",
     "@types/backo2": "^1.0.1",
     "@types/chai": "^5.2.2",
+    "@types/chai-as-promised": "^8.0.2",
     "@types/engine.io-client": "^6.0.0",
     "@types/mocha": "^10.0.1",
     "@typescript-eslint/eslint-plugin": "^8.33.0",
@@ -57,11 +64,10 @@
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.4.1",
     "mocha": "^11.5.0",
-    "nydus": "^4.0.0",
+    "nydus": "^5.0.2",
     "prettier": "^3.5.3",
-    "rimraf": "^3.0.2",
-    "ts-mocha": "^11.1.0",
-    "ts-node": "^10.9.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   },
   "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"

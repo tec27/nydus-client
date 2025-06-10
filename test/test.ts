@@ -5,7 +5,7 @@ import http from 'http'
 import { AddressInfo } from 'net'
 
 import nydus, { NydusServer } from 'nydus'
-import client, { InvokeError, NydusClient, RouteInfo } from '../index'
+import client, { InvokeError, NydusClient, RouteInfo } from '../index.js'
 
 chai.use(chaiAsPromised)
 
@@ -106,7 +106,7 @@ describe('client', () => {
     try {
       await c.invoke('/errorMe')
       return Promise.reject(new Error('should have thrown'))
-    } catch (err) {
+    } catch (err: any) {
       expect(err).to.be.an.instanceOf(Error)
       expect(err.status).to.be.eql(420)
       expect(err.message).to.be.eql('Ya done goofed')
@@ -119,7 +119,7 @@ describe('client', () => {
     try {
       await c.invoke('/hello')
       return Promise.reject(new Error('should have thrown'))
-    } catch (err) {
+    } catch (err: any) {
       expect(err).to.be.an.instanceOf(Error)
       expect(err.message).to.be.eql('Not connected')
       return Promise.resolve()

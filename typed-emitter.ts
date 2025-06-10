@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events'
-import TypedEmitter, { EventMap } from 'typed-emitter'
+import { DefaultListener, TypedEmitter } from 'tiny-typed-emitter'
+
+export type EventMap = DefaultListener
 
 /**
  * A typed version of the normal node EventEmitter class, such that emitted/handled events and
@@ -9,7 +11,7 @@ import TypedEmitter, { EventMap } from 'typed-emitter'
  *
  * Example:
  * ```
- * interface FooEvents {
+ * type FooEvents = {
  *   bar: (message: string) => void
  *   baz: (count: number, ...extras: any[]) => void
  * }
