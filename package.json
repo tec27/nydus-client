@@ -42,9 +42,10 @@
   ],
   "dependencies": {
     "backo2": "^1.0.2",
-    "cuid": "^2.1.6",
     "engine.io-client": "^6.6.3",
+    "nanoid": "^5.1.5",
     "nydus-protocol": "^3.0.0",
+    "prettier-plugin-organize-imports": "^4.1.0",
     "ruta3": "^2.0.0",
     "tiny-typed-emitter": "^2.1.0"
   },

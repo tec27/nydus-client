@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['index.ts', 'typed-emitter.ts'],
+  entry: ['index.ts'],
   format: ['esm'],
   dts: true,
   sourcemap: true,

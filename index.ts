@@ -1,16 +1,16 @@
-import { SocketOptions as EngineIoSocketOptions, Socket as EngineIoSocket } from 'engine.io-client'
-import cuid from 'cuid'
-import ruta from 'ruta3'
 import Backoff from 'backo2'
+import { Socket as EngineIoSocket, SocketOptions as EngineIoSocketOptions } from 'engine.io-client'
+import { nanoid } from 'nanoid'
 import {
-  encode,
   decode,
-  protocolVersion,
-  NydusResultMessage,
+  encode,
   MessageType,
   NydusErrorMessage,
   NydusPublishMessage,
+  NydusResultMessage,
+  protocolVersion,
 } from 'nydus-protocol'
+import ruta from 'ruta3'
 import { TypedEventEmitter } from './typed-emitter'
 
 export { protocolVersion }
@@ -234,7 +234,7 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
    * rejected with the result or error (respectively) from the server.
    */
   invoke(path: string, data?: any) {
-    const id = cuid()
+    const id = nanoid()
     return new Promise((resolve, reject) => {
       if (!this.conn) {
         reject(new Error('Not connected'))
