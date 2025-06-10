@@ -10,10 +10,9 @@
     "build": "tsc && tsc -p tsconfig-cjs.json",
     "clean": "rimraf dist",
     "lint": "eslint --ext .js,.ts ./",
-    "prepublishOnly": "yarn run lint && yarn run test && yarn run clean && yarn run build",
+    "prepublishOnly": "pnpm run lint && pnpm run test && pnpm run clean && pnpm run build",
     "test": "ts-mocha -p tsconfig-cjs.json -R spec test/**.ts",
-    "testonly": "ts-mocha -p tsconfig-cjs.json -R spec test/**.ts",
-    "posttest": "yarn run tsc --noEmit && yarn run lint",
+    "typecheck": "tsc --noEmit",
     "watch": "tsc -w"
   },
   "repository": {
@@ -65,5 +64,5 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   },
-  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
+  "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"
 }
