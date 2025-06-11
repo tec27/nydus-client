@@ -73,13 +73,13 @@ type NydusEvents = {
   /** Fired when a general error occurs. */
   error: (err: Error) => void
   /** Fired when the connection attempt times out. */
-  // eslint-disable-next-line camelcase
+
   connect_timeout: () => void
   /** Fired when the reconnection attempts exceeded the maximum allowed without success. */
-  // eslint-disable-next-line camelcase
+
   reconnect_failed: () => void
   /** Fired when the connection attempt failed. */
-  // eslint-disable-next-line camelcase
+
   connect_failed: () => void
 }
 

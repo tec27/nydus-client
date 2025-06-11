@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsup",
     "lint": "eslint --ext .js,.ts ./",
-    "prepublishOnly": "pnpm run lint && pnpm run test && pnpm run clean && pnpm run build",
+    "prepublishOnly": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "test": "mocha --import=tsx -R spec test/**.ts",
     "typecheck": "tsc --noEmit",
     "watch": "tsup --watch"
@@ -50,6 +50,8 @@
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.28.0",
     "@swc/core": "^1.12.0",
     "@types/backo2": "^1.0.1",
     "@types/chai": "^5.2.2",
@@ -61,9 +63,10 @@
     "chai": "^5.2.0",
     "chai-as-promised": "^8.0.1",
     "cross-env": "^7.0.3",
-    "eslint": "^8.17.0",
+    "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.4.1",
+    "globals": "^16.2.0",
     "mocha": "^11.5.0",
     "nydus": "^5.0.2",
     "prettier": "^3.5.3",
