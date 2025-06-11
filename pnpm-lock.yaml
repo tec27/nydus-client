@@ -24,7 +24,7 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0(prettier@3.5.3)(typescript@5.8.3)
       ruta3:
-        specifier: ^2.0.0
+        specifier: ^2.0.1
         version: 2.0.1
       tiny-typed-emitter:
         specifier: ^2.1.0
@@ -40,7 +40,7 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0
       '@types/backo2':
-        specifier: ^1.0.1
+        specifier: ^1.0.4
         version: 1.0.4
       '@types/chai':
         specifier: ^5.2.2
@@ -52,13 +52,13 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       '@types/mocha':
-        specifier: ^10.0.1
+        specifier: ^10.0.10
         version: 10.0.10
       '@typescript-eslint/eslint-plugin':
-        specifier: ^8.33.0
+        specifier: ^8.34.0
         version: 8.34.0(@typescript-eslint/parser@8.34.0(eslint@9.28.0)(typescript@5.8.3))(eslint@9.28.0)(typescript@5.8.3)
       '@typescript-eslint/parser':
-        specifier: ^8.33.0
+        specifier: ^8.34.0
         version: 8.34.0(eslint@9.28.0)(typescript@5.8.3)
       chai:
         specifier: ^5.2.0
@@ -82,7 +82,7 @@ importers:
         specifier: ^16.2.0
         version: 16.2.0
       mocha:
-        specifier: ^11.5.0
+        specifier: ^11.6.0
         version: 11.6.0
       nydus:
         specifier: ^5.0.2
