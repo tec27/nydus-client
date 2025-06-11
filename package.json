@@ -1,6 +1,6 @@
 {
   "name": "nydus-client",
-  "version": "4.0.6",
+  "version": "5.0.0",
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
   "type": "module",
   "exports": {
