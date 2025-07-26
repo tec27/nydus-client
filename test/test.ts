@@ -197,4 +197,39 @@ describe('client', () => {
       allowRequestFilters.length = 0
     })
   })
+
+  it('should emit unauthorized and not reconnect on 403 response', async () => {
+    // Set up the filter to block requests (triggers 403)
+    allowRequestFilters.push(() => false)
+
+    const c = client('ws://localhost:' + port, {
+      reconnectionDelay: 10,
+      reconnectionJitter: 0,
+      connectTimeout: 30,
+      transports: ['polling', 'websocket'],
+    })
+    clients.push(c)
+
+    const unauthorizedPromise = new Promise<void>(resolve => {
+      c.once('unauthorized', () => resolve())
+    })
+
+    const reconnectingPromise = new Promise<void>((resolve, reject) => {
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      unauthorizedPromise.then(() => {
+        timeout = setTimeout(() => resolve(), 20) // Wait 20ms to see if reconnect happens
+      })
+      c.once('reconnecting', () => {
+        reject(new Error('Should not attempt to reconnect after unauthorized'))
+        if (timeout) {
+          clearTimeout(timeout)
+        }
+      })
+    })
+
+    c.connect()
+
+    await unauthorizedPromise
+    await reconnectingPromise
+  })
 })

@@ -45,7 +45,7 @@ interface ExpandedSocket extends Omit<EngineIoSocket, 'readyState'> {
 
 interface TransportError extends Error {
   readonly type: 'TransportError'
-  readonly description: Error
+  readonly description: Error | number
 }
 
 function isTransportError(err: Error): err is TransportError {
@@ -72,14 +72,20 @@ type NydusEvents = {
 
   /** Fired when a general error occurs. */
   error: (err: Error) => void
+
+  /**
+   * Fired when the server returns a 403 on connect. The client will not continue attempting
+   * to reconnect after this.
+   */
+  unauthorized: () => void
+
   /** Fired when the connection attempt times out. */
-
   connect_timeout: () => void
+
   /** Fired when the reconnection attempts exceeded the maximum allowed without success. */
-
   reconnect_failed: () => void
-  /** Fired when the connection attempt failed. */
 
+  /** Fired when the connection attempt failed. */
   connect_failed: () => void
 }
 
@@ -325,13 +331,19 @@ export class NydusClient extends TypedEventEmitter<NydusEvents> {
   private onError(err: Error | TransportError) {
     this.clearConnectTimer()
     if (isTransportError(err) && err.message === 'xhr poll error') {
-      this.onClose('error', err)
+      if (err.description === 403) {
+        this.skipReconnect = true
+        this.emit('unauthorized')
+      } else {
+        this.onClose('error', err)
+      }
       return
     }
     if (
       this.skipReconnect &&
       isTransportError(err) &&
       err.description &&
+      typeof err.description !== 'number' &&
       err.description.message &&
       /closed before the connection (was|is) established/.test(err.description.message)
     ) {
