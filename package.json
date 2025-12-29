@@ -4,11 +4,12 @@
   "description": "WebSocket client library for the nydus protocol, a simple RPC/PubSub protocol.",
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
   },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "engines": {
     "node": ">=22.12"
   },
@@ -45,8 +46,7 @@
     "engine.io-client": "^6.6.4",
     "nanoid": "^5.1.6",
     "nydus-protocol": "^3.0.0",
-    "ruta3": "^2.0.1",
-    "tiny-typed-emitter": "^2.1.0"
+    "ruta3": "^2.0.1"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "^0.18.2",

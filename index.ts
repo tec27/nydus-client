@@ -1,5 +1,6 @@
 import Backoff from 'backo2'
 import { Socket as EngineIoSocket, SocketOptions as EngineIoSocketOptions } from 'engine.io-client'
+import { EventEmitter } from 'events'
 import { nanoid } from 'nanoid'
 import {
   decode,
@@ -11,7 +12,6 @@ import {
   protocolVersion,
 } from 'nydus-protocol'
 import ruta from 'ruta3'
-import { TypedEventEmitter } from './typed-emitter.js'
 
 export { protocolVersion }
 
@@ -62,31 +62,31 @@ export type RouteHandler = (routeInfo: RouteInfo, data: any) => void
 
 type NydusEvents = {
   /** Fired when the connection succeeds. */
-  connect: () => void
+  connect: []
   /** Fired when the connection has been closed */
-  disconnect: (reason: string, details?: Error) => void
+  disconnect: [reason: string, details?: Error]
   /** Fired when a reconnect attempt is being initiated. */
-  reconnecting: (attempts: number) => void
+  reconnecting: [attempts: number]
   /** Fired when a publish occurred that wasn't handled by any registered routes. */
-  unhandled: (published: { path: string; data: any }) => void
+  unhandled: [published: { path: string; data: any }]
 
   /** Fired when a general error occurs. */
-  error: (err: Error) => void
+  error: [err: Error]
 
   /**
    * Fired when the server returns a 403 on connect. The client will not continue attempting
    * to reconnect after this.
    */
-  unauthorized: () => void
+  unauthorized: []
 
   /** Fired when the connection attempt times out. */
-  connect_timeout: () => void
+  connect_timeout: []
 
   /** Fired when the reconnection attempts exceeded the maximum allowed without success. */
-  reconnect_failed: () => void
+  reconnect_failed: []
 
   /** Fired when the connection attempt failed. */
-  connect_failed: () => void
+  connect_failed: []
 }
 
 export class InvokeError extends Error {
@@ -102,7 +102,7 @@ export class InvokeError extends Error {
 
 type PromiseCompleters = { resolve: (value: unknown) => void; reject: (reason: any) => void }
 
-export class NydusClient extends TypedEventEmitter<NydusEvents> {
+export class NydusClient extends EventEmitter<NydusEvents> {
   readonly host: string
   readonly opts: Partial<NydusClientOptions>
   conn: ExpandedSocket | null = null
