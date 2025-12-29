@@ -11,7 +11,7 @@ import {
   protocolVersion,
 } from 'nydus-protocol'
 import ruta from 'ruta3'
-import { TypedEventEmitter } from './typed-emitter'
+import { TypedEventEmitter } from './typed-emitter.js'
 
 export { protocolVersion }
 

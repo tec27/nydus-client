@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsdown'
 
 export default defineConfig({
   entry: ['index.ts'],
@@ -7,6 +7,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   outDir: 'dist',
-  target: 'node22',
+  target: ['node22', 'chrome130', 'safari16'],
   skipNodeModulesBundle: true,
+  exports: true,
 })
