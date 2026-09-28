@@ -23,6 +23,11 @@ describe('client', () => {
   let port: number
   const clients: NydusClient[] = []
   const allowRequestFilters: Array<(req: http.IncomingMessage) => boolean> = []
+  /**
+   * Each entry takes over one handshake, which stays unanswered (like a handshake on a dead
+   * connection) until the entry calls the `answer` it was given.
+   */
+  const handshakeHolds: Array<(answer: () => void) => void> = []
 
   beforeEach(async () => {
     const allowRequest = (
@@ -30,7 +35,12 @@ describe('client', () => {
       cb: (err: string | null | undefined, allowed: boolean) => void,
     ) => {
       const allow = allowRequestFilters.every(f => f(req))
-      cb(null, allow)
+      const hold = handshakeHolds.shift()
+      if (hold) {
+        hold(() => cb(null, allow))
+      } else {
+        cb(null, allow)
+      }
     }
 
     httpServer = http.createServer()
@@ -53,6 +63,7 @@ describe('client', () => {
     httpServer?.close()
 
     allowRequestFilters.length = 0
+    handshakeHolds.length = 0
     clients.length = 0
     nydusServer = undefined
     httpServer = undefined
@@ -231,5 +242,83 @@ describe('client', () => {
 
     await unauthorizedPromise
     await reconnectingPromise
+  })
+
+  /** Holds the next handshake unanswered, returning a function that answers it. */
+  function holdNextHandshake(): Promise<() => void> {
+    return new Promise(resolve => {
+      handshakeHolds.push(answer => resolve(answer))
+    })
+  }
+
+  function createTimeoutClient(): NydusClient {
+    const c = client('ws://localhost:' + port, {
+      reconnectionDelay: 2,
+      reconnectionJitter: 0,
+      connectTimeout: 30,
+      transports: ['polling', 'websocket'],
+    })
+    clients.push(c)
+    return c
+  }
+
+  it('should retry past a stuck handshake with an INVOKE queued on it', async () => {
+    const c = createTimeoutClient()
+    const held = holdNextHandshake()
+    let connects = 0
+    const connected = new Promise<void>(resolve => {
+      c.on('connect', () => {
+        connects += 1
+        resolve()
+      })
+    })
+
+    c.connect()
+    const queued = c.invoke('/hello')
+    const answerStuck = await held
+
+    await expect(queued).to.be.rejectedWith('Connection closed (connect timeout)')
+    await connected
+
+    // The stuck handshake completing late must not disturb the connection that replaced it
+    answerStuck()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(connects).to.be.eql(1)
+    expect(await c.invoke('/hello')).to.be.eql('hi')
+  })
+
+  it('should disconnect during a stuck handshake with an INVOKE queued on it', async () => {
+    const c = createTimeoutClient()
+    const held = holdNextHandshake()
+    let reconnecting = false
+    c.on('reconnecting', () => {
+      reconnecting = true
+    })
+
+    c.connect()
+    const queued = c.invoke('/hello')
+    const answerStuck = await held
+    c.disconnect()
+
+    await expect(queued).to.be.rejectedWith('Connection closed (forced close)')
+    expect(c.readyState).to.be.eql('closed')
+    // Outlasts the connect timeout, which must not revive reconnection after the disconnect
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(reconnecting).to.be.eql(false)
+
+    answerStuck()
+    const connected = new Promise<void>(resolve => c.once('connect', () => resolve()))
+    c.connect()
+    await connected
+  })
+
+  it('should reject outstanding INVOKEs when the connection closes', async () => {
+    nydusServer!.registerRoute('/never', () => new Promise(() => {}))
+    const c = await connectClient()
+
+    const outstanding = c.invoke('/never')
+    c.disconnect()
+
+    await expect(outstanding).to.be.rejectedWith('Connection closed (forced close)')
   })
 })

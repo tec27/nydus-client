@@ -138,21 +138,46 @@ export class NydusClient extends EventEmitter<NydusEvents> {
   }
 
   private doConnect() {
+    const conn = new EngineIoSocket(this.host, this.opts) as unknown as ExpandedSocket
+    this.conn = conn
+    // A connection that has been abandoned can still finish opening or closing later; its events
+    // must not act on whichever connection is current by then.
+    conn
+      .on('open', () => {
+        if (this.conn === conn) this.onOpen()
+      })
+      .on('message', data => {
+        if (this.conn === conn) this.onMessage(data as string)
+      })
+      .on('close', (reason, details) => {
+        if (this.conn === conn) this.onClose(reason, details as Error | undefined)
+      })
+      .on('error', err => {
+        if (this.conn === conn) this.onError(err as Error)
+      })
+
     if (this.opts.connectTimeout) {
       this.connectTimer = setTimeout(() => {
+        this.connectTimer = null
         this.emit('connect_timeout')
-        this.disconnect()
-        this.skipReconnect = false
+        this.abandonConn()
         this.onClose('connect timeout')
       }, this.opts.connectTimeout)
     }
+  }
 
-    this.conn = new EngineIoSocket(this.host, this.opts) as unknown as ExpandedSocket
-    this.conn
-      .on('open', this.onOpen.bind(this))
-      .on('message', data => this.onMessage(data as string))
-      .on('close', this.onClose.bind(this) as any)
-      .on('error', this.onError.bind(this) as any)
+  /**
+   * Drops the current connection without waiting for it to close. engine.io defers a close until
+   * any queued packets have been written, which never happens on a connection whose handshake is
+   * stuck, so the queue is discarded (the invokes it held are rejected by `onClose`).
+   */
+  private abandonConn() {
+    const conn = this.conn
+    if (!conn) return
+
+    this.conn = null
+    conn.writeBuffer = []
+    conn.close()
   }
 
   // Connect to the server. If already connected, this will be a no-op.
@@ -196,12 +221,21 @@ export class NydusClient extends EventEmitter<NydusEvents> {
   // Disconnect from the server. If not already connected, this will be a no-op.
   disconnect() {
     this.skipReconnect = true
+    this.clearConnectTimer()
     if (this.backoffTimer) {
       clearTimeout(this.backoffTimer)
       this.backoffTimer = null
     }
 
     if (!this.conn) return
+
+    if (!this.wasOpened) {
+      // Nothing queued on a connection that never opened is worth waiting for, and its handshake
+      // may never finish
+      this.abandonConn()
+      this.onClose('forced close')
+      return
+    }
 
     if (!this.disconnectingPromise) {
       this.disconnectingPromise = new Promise<void>(resolve => {
@@ -314,6 +348,13 @@ export class NydusClient extends EventEmitter<NydusEvents> {
       this.disconnectingPromise = undefined
     }
 
+    // No response can arrive for these anymore
+    const pending = Array.from(this.outstanding.values())
+    this.outstanding.clear()
+    for (const { reject } of pending) {
+      reject(new Error(`Connection closed (${reason})`))
+    }
+
     if (!this.wasOpened) {
       this.emit('connect_failed')
       this.reconnect()
@@ -323,7 +364,6 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     }
 
     this.emit('disconnect', reason, details)
-    this.outstanding.clear()
     this.wasOpened = false
     this.reconnect()
   }
