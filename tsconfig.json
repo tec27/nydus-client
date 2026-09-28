@@ -10,7 +10,9 @@
     "strict": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "moduleResolution": "nodenext"
+    "moduleResolution": "nodenext",
+    "skipLibCheck": true,
+    "types": ["node", "mocha"]
   },
 
   "include": ["./"],

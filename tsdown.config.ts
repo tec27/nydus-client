@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: ['node22', 'chrome130', 'safari16'],
-  skipNodeModulesBundle: true,
+  deps: { neverBundle: true },
   exports: true,
 })
