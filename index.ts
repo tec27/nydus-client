@@ -286,7 +286,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     })
       .catch(err => {
         // Convert error-like objects back to Errors
-        if (err.message && err.status) {
+        if (err?.message && err?.status) {
           const converted = new InvokeError(err.message, err.status, err.body)
           throw converted
         }

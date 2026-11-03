@@ -125,6 +125,38 @@ describe('client', () => {
     }
   })
 
+  it('should reject INVOKEs with error data that is null or missing', async () => {
+    // A server's invokeErrorConverter may return anything, including nothing
+    const convertedServer = http.createServer()
+    const converted = nydus(convertedServer, {
+      invokeErrorConverter: (err: Error) => (err.message === 'null' ? null : undefined),
+    } as any)
+    converted.registerRoute('/null', async () => {
+      throw new Error('null')
+    })
+    converted.registerRoute('/undefined', async () => {
+      throw new Error('undefined')
+    })
+    const convertedPort = await new Promise<number>(resolve => {
+      convertedServer.listen(0, () => resolve((convertedServer.address() as AddressInfo).port))
+    })
+
+    try {
+      const c = client('ws://localhost:' + convertedPort)
+      clients.push(c)
+      await new Promise<void>(resolve => {
+        c.once('connect', () => resolve())
+        c.connect()
+      })
+
+      await expect(c.invoke('/null')).to.be.rejected.and.eventually.be.null
+      await expect(c.invoke('/undefined')).to.be.rejected.and.eventually.be.undefined
+    } finally {
+      converted.close()
+      convertedServer.close()
+    }
+  })
+
   it('should fail INVOKEs that happen while not connected', async () => {
     const c = client('ws://localhost:' + port)
     try {
