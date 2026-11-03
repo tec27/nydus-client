@@ -1,3 +1,5 @@
 allowBuilds:
   '@swc/core': true
   esbuild: true
+minimumReleaseAgeExclude:
+  - nydus-protocol@4.0.0
