@@ -464,4 +464,52 @@ describe('client', () => {
 
     await expect(outstanding).to.be.rejectedWith('Connection closed (forced close)')
   })
+
+  /**
+   * Connects a polling-only client and leaves an INVOKE being written, so a close has to wait for
+   * that write to finish (leaving the socket 'closing' meanwhile).
+   */
+  async function connectWithWriteInFlight(): Promise<NydusClient> {
+    nydusServer!.registerRoute('/never', () => new Promise(() => {}))
+    const c = client('ws://localhost:' + port, {
+      reconnectionDelay: 2,
+      reconnectionJitter: 0,
+      transports: ['polling'],
+    })
+    clients.push(c)
+    await new Promise<void>(resolve => {
+      c.once('connect', () => resolve())
+      c.connect()
+    })
+    c.invoke('/never').catch(() => {})
+    return c
+  }
+
+  it('should connect again after a socket closed by a bad message finishes closing', async () => {
+    const c = await connectWithWriteInFlight()
+    // As if the server sent something unparseable, which makes the client close the socket
+    ;(c.conn as any).emit('message', 'not a nydus message')
+    expect(c.readyState).to.be.eql('closing')
+
+    const reconnected = new Promise<void>(resolve => c.once('connect', () => resolve()))
+    c.connect()
+    await reconnected
+  })
+
+  it('should stay disconnected after a connect() made while closing is disconnected', async () => {
+    const c = await connectWithWriteInFlight()
+    c.disconnect()
+    expect(c.readyState).to.be.eql('closing')
+    c.connect()
+    c.disconnect()
+
+    let connects = 0
+    c.on('connect', () => {
+      connects += 1
+    })
+    await new Promise<void>(resolve => c.once('disconnect', () => resolve()))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(connects).to.be.eql(0)
+    expect(c.readyState).to.be.eql('closed')
+  })
 })

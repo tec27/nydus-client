@@ -116,8 +116,8 @@ export class NydusClient extends EventEmitter<NydusEvents> {
 
   private wasOpened = false
   private skipReconnect = false
-  private disconnectingPromise: Promise<void> | undefined = undefined
-  private disconnectingResolver: (() => void) | undefined = undefined
+  /** Whether connect() was called while the socket was closing, to connect once it has closed. */
+  private connectAfterClose = false
 
   constructor(host: string, opts: Partial<NydusClientOptions> = {}) {
     super()
@@ -187,9 +187,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     if (this.conn) {
       // If the socket is closing, wait for it to close before connecting again
       if (this.conn.readyState === 'closing') {
-        this.disconnectingPromise!.then(() => {
-          this.connect()
-        }).catch(_err => {})
+        this.connectAfterClose = true
       }
       return
     }
@@ -230,6 +228,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
   // Disconnect from the server. If not already connected, this will be a no-op.
   disconnect() {
     this.skipReconnect = true
+    this.connectAfterClose = false
     this.clearConnectTimer()
     if (this.backoffTimer) {
       clearTimeout(this.backoffTimer)
@@ -244,12 +243,6 @@ export class NydusClient extends EventEmitter<NydusEvents> {
       this.abandonConn()
       this.onClose('forced close')
       return
-    }
-
-    if (!this.disconnectingPromise) {
-      this.disconnectingPromise = new Promise<void>(resolve => {
-        this.disconnectingResolver = resolve
-      }).catch(_err => {})
     }
 
     this.conn.close()
@@ -351,12 +344,6 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     this.clearConnectTimer()
     this.conn = null
 
-    if (this.disconnectingResolver) {
-      this.disconnectingResolver()
-      this.disconnectingResolver = undefined
-      this.disconnectingPromise = undefined
-    }
-
     // No response can arrive for these anymore
     const pending = Array.from(this.outstanding.values())
     this.outstanding.clear()
@@ -366,7 +353,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
 
     if (!this.wasOpened) {
       this.emit('connect_failed')
-      this.reconnect()
+      this.connectOrReconnect()
       // Sockets can emit 'close' even if the connection was never actually opened. Don't emit emits
       // upstream in that case, since they're rather unnecessary
       return
@@ -374,7 +361,17 @@ export class NydusClient extends EventEmitter<NydusEvents> {
 
     this.emit('disconnect', reason, details)
     this.wasOpened = false
-    this.reconnect()
+    this.connectOrReconnect()
+  }
+
+  /** Follows up a close, either with the connect() that was waiting on it or a reconnect. */
+  private connectOrReconnect() {
+    if (this.connectAfterClose) {
+      this.connectAfterClose = false
+      this.connect()
+    } else {
+      this.reconnect()
+    }
   }
 
   private onError(err: Error | TransportError) {
