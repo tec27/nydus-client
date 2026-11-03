@@ -3,3 +3,4 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - nydus-protocol@4.0.0
+  - nydus@5.5.0
