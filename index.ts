@@ -160,6 +160,8 @@ export class NydusClient extends EventEmitter<NydusEvents> {
       this.connectTimer = setTimeout(() => {
         this.connectTimer = null
         this.emit('connect_timeout')
+        // A listener may have dealt with the connection already (e.g. by disconnecting)
+        if (this.conn !== conn) return
         this.abandonConn()
         this.onClose('connect timeout')
       }, this.opts.connectTimeout)

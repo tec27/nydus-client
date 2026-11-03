@@ -362,6 +362,31 @@ describe('client', () => {
     }
   })
 
+  it('should report a timed out connection once when a listener disconnects', async () => {
+    const c = createTimeoutClient()
+    const held = holdNextHandshake()
+    let failures = 0
+    c.on('connect_failed', () => {
+      failures += 1
+    })
+    const timedOut = new Promise<void>(resolve =>
+      c.once('connect_timeout', () => {
+        c.disconnect()
+        resolve()
+      }),
+    )
+
+    c.connect()
+    const answerStuck = await held
+    try {
+      await timedOut
+      await new Promise(resolve => setImmediate(resolve))
+      expect(failures).to.be.eql(1)
+    } finally {
+      answerStuck()
+    }
+  })
+
   it('should reject outstanding INVOKEs when the connection closes', async () => {
     nydusServer!.registerRoute('/never', () => new Promise(() => {}))
     const c = await connectClient()
