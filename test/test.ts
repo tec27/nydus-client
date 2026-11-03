@@ -312,6 +312,24 @@ describe('client', () => {
     await connected
   })
 
+  it('should not jitter reconnects when reconnectionJitter is 0', () => {
+    const c = client('ws://localhost:' + port, {
+      reconnectionDelay: 100,
+      reconnectionDelayMax: 10000,
+      reconnectionJitter: 0,
+    })
+    const backoff = (c as any).backoff
+    const random = Math.random
+    Math.random = () => 0.99
+    try {
+      expect([backoff.duration(), backoff.duration(), backoff.duration()]).to.be.eql([
+        100, 200, 400,
+      ])
+    } finally {
+      Math.random = random
+    }
+  })
+
   it('should reject outstanding INVOKEs when the connection closes', async () => {
     nydusServer!.registerRoute('/never', () => new Promise(() => {}))
     const c = await connectClient()

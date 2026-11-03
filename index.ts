@@ -128,7 +128,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     this.backoff = new Backoff({
       min: opts.reconnectionDelay || 1000,
       max: opts.reconnectionDelayMax || 10000,
-      jitter: opts.reconnectionJitter || 0.5,
+      jitter: opts.reconnectionJitter ?? 0.5,
     })
   }
 
