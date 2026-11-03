@@ -387,6 +387,74 @@ describe('client', () => {
     }
   })
 
+  it('should not emit reconnecting after connect() supersedes a pending reconnect', async () => {
+    let serverClient: { close(): void } | undefined
+    nydusServer!.on('connection', sC => {
+      serverClient = sC
+    })
+    const c = client('ws://localhost:' + port, {
+      reconnectionDelay: 50,
+      reconnectionJitter: 0,
+      transports: ['polling', 'websocket'],
+    })
+    clients.push(c)
+    await new Promise<void>(resolve => {
+      c.once('connect', () => resolve())
+      c.connect()
+    })
+
+    const disconnected = new Promise<void>(resolve => c.once('disconnect', () => resolve()))
+    serverClient!.close()
+    await disconnected
+    // The disconnect has scheduled a reconnect; connect before it fires
+    await new Promise(resolve => setImmediate(resolve))
+    let reconnecting = 0
+    c.on('reconnecting', () => {
+      reconnecting += 1
+    })
+    const connected = new Promise<void>(resolve => c.once('connect', () => resolve()))
+    c.connect()
+    await connected
+
+    // Outlasts the superseded reconnect's delay
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(reconnecting).to.be.eql(0)
+  })
+
+  it('should give connect() full reconnection attempts after a cancelled reconnect', async () => {
+    // Nothing is listening, so every connection attempt fails
+    nydusServer!.close()
+    httpServer!.close()
+
+    const c = client('ws://localhost:' + port, {
+      reconnectionAttempts: 1,
+      reconnectionDelay: 10,
+      reconnectionJitter: 0,
+      transports: ['polling'],
+    })
+    clients.push(c)
+
+    const failed = new Promise<void>(resolve => c.once('connect_failed', () => resolve()))
+    c.connect()
+    await failed
+    // The failure scheduled a reconnect, which this cancels before it was ever attempted
+    await new Promise(resolve => setImmediate(resolve))
+    c.disconnect()
+
+    const events: string[] = []
+    c.on('reconnecting', () => events.push('reconnecting'))
+    const gaveUp = new Promise<void>(resolve =>
+      c.once('reconnect_failed', () => {
+        events.push('reconnect_failed')
+        resolve()
+      }),
+    )
+    c.connect()
+    await gaveUp
+
+    expect(events).to.be.eql(['reconnecting', 'reconnect_failed'])
+  })
+
   it('should reject outstanding INVOKEs when the connection closes', async () => {
     nydusServer!.registerRoute('/never', () => new Promise(() => {}))
     const c = await connectClient()

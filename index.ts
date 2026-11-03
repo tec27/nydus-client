@@ -196,6 +196,13 @@ export class NydusClient extends EventEmitter<NydusEvents> {
 
     this.skipReconnect = false
     this.wasOpened = false
+    // This starts a fresh connection attempt, so any pending reconnect (and the attempts it has
+    // counted) is superseded
+    if (this.backoffTimer) {
+      clearTimeout(this.backoffTimer)
+      this.backoffTimer = null
+    }
+    this.backoff.reset()
     this.doConnect()
   }
 
