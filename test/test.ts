@@ -277,6 +277,24 @@ describe('client', () => {
     await reconnectingPromise
   })
 
+  it('should connect again when an unauthorized listener calls connect()', async () => {
+    let authorized = false
+    allowRequestFilters.push(() => authorized)
+    const c = client('ws://localhost:' + port, {
+      reconnectionJitter: 0,
+      transports: ['polling', 'websocket'],
+    })
+    clients.push(c)
+    c.once('unauthorized', () => {
+      authorized = true
+      c.connect()
+    })
+
+    const connected = new Promise<void>(resolve => c.once('connect', () => resolve()))
+    c.connect()
+    await connected
+  })
+
   /** Holds the next handshake unanswered, returning a function that answers it. */
   function holdNextHandshake(): Promise<() => void> {
     return new Promise(resolve => {

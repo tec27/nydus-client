@@ -393,12 +393,11 @@ export class NydusClient extends EventEmitter<NydusEvents> {
   private onError(err: Error | TransportError) {
     this.clearConnectTimer()
     if (isTransportError(err) && err.message === 'xhr poll error') {
-      if (err.description === 403) {
-        this.skipReconnect = true
-        this.emit('unauthorized')
-      } else {
-        this.onClose('error', err)
-      }
+      const unauthorized = err.description === 403
+      if (unauthorized) this.skipReconnect = true
+      // Closed out before reporting it as unauthorized, so a listener for that can connect() again
+      this.onClose('error', err)
+      if (unauthorized) this.emit('unauthorized')
       return
     }
     if (
