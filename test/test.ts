@@ -362,7 +362,26 @@ describe('client', () => {
     }
   })
 
-  it('should report a timed out connection once when a listener disconnects', async () => {
+  it('should not report a connection disconnected during its handshake as failed', async () => {
+    const c = createTimeoutClient()
+    const held = holdNextHandshake()
+    let failures = 0
+    c.on('connect_failed', () => {
+      failures += 1
+    })
+
+    c.connect()
+    const answerStuck = await held
+    try {
+      c.disconnect()
+      await new Promise(resolve => setImmediate(resolve))
+      expect(failures).to.be.eql(0)
+    } finally {
+      answerStuck()
+    }
+  })
+
+  it('should treat a disconnect from a connect_timeout listener as cancelling', async () => {
     const c = createTimeoutClient()
     const held = holdNextHandshake()
     let failures = 0
@@ -381,7 +400,7 @@ describe('client', () => {
     try {
       await timedOut
       await new Promise(resolve => setImmediate(resolve))
-      expect(failures).to.be.eql(1)
+      expect(failures).to.be.eql(0)
     } finally {
       answerStuck()
     }

@@ -241,7 +241,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
       // Nothing queued on a connection that never opened is worth waiting for, and its handshake
       // may never finish
       this.abandonConn()
-      this.onClose('forced close')
+      this.onClose('forced close', undefined, true /* cancelled */)
       return
     }
 
@@ -349,7 +349,11 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     this.disconnect()
   }
 
-  private onClose(reason: string, details?: Error) {
+  /**
+   * Cleans up after the current connection has closed. `cancelled` marks a connection attempt that
+   * was given up on with `disconnect()`, which isn't reported as having failed.
+   */
+  private onClose(reason: string, details?: Error, cancelled = false) {
     this.clearConnectTimer()
     this.conn = null
 
@@ -361,7 +365,7 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     }
 
     if (!this.wasOpened) {
-      this.emit('connect_failed')
+      if (!cancelled) this.emit('connect_failed')
       this.connectOrReconnect()
       // Sockets can emit 'close' even if the connection was never actually opened. Don't emit emits
       // upstream in that case, since they're rather unnecessary
