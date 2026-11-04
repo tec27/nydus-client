@@ -5,6 +5,7 @@ import http from 'http'
 import { AddressInfo } from 'net'
 
 import nydus, { NydusServer } from 'nydus'
+import { decode, encode, MessageType } from 'nydus-protocol'
 import client, { InvokeError, NydusClient, protocolVersion, RouteInfo } from '../index.js'
 
 chai.use(chaiAsPromised)
@@ -553,5 +554,29 @@ describe('client', () => {
     ])
     expect(reconnecting).to.be.eql(false)
     expect(c.readyState).to.be.eql('closed')
+  })
+
+  it('should report every response to an INVOKE after the first as an error', async () => {
+    nydusServer!.registerRoute('/never', () => new Promise(() => {}))
+    const c = await connectClient()
+    const conn = c.conn as any
+    const sent: string[] = []
+    const send = conn.send.bind(conn)
+    conn.send = (msg: string, opts: unknown) => {
+      sent.push(msg)
+      send(msg, opts)
+    }
+    const errors: string[] = []
+    c.on('error', err => errors.push(err.message))
+
+    const result = c.invoke('/never')
+    const { id } = decode(sent[0]) as { id: string }
+    // As if the server answered twice in one payload, and then once more later
+    conn.emit('message', encode(MessageType.Result, 'first', id))
+    conn.emit('message', encode(MessageType.Result, 'second', id))
+    expect(await result).to.be.eql('first')
+    conn.emit('message', encode(MessageType.Result, 'third', id))
+
+    expect(errors).to.be.eql(['Unknown invoke id', 'Unknown invoke id'])
   })
 })

@@ -305,6 +305,9 @@ export class NydusClient extends EventEmitter<NydusEvents> {
       return
     }
 
+    // Removed right away (rather than once the promise settles) so that a duplicate response in the
+    // same payload is treated like any other unexpected one
+    this.outstanding.delete(id)
     p[type === MessageType.Result ? 'resolve' : 'reject'](data)
   }
 
