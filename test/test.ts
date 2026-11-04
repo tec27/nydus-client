@@ -5,7 +5,7 @@ import http from 'http'
 import { AddressInfo } from 'net'
 
 import nydus, { NydusServer } from 'nydus'
-import client, { InvokeError, NydusClient, RouteInfo } from '../index.js'
+import client, { InvokeError, NydusClient, protocolVersion, RouteInfo } from '../index.js'
 
 chai.use(chaiAsPromised)
 
@@ -510,6 +510,29 @@ describe('client', () => {
     await new Promise<void>(resolve => c.once('disconnect', () => resolve()))
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(connects).to.be.eql(0)
+    expect(c.readyState).to.be.eql('closed')
+  })
+
+  it('should stop connecting to a server with an incompatible protocol version', async () => {
+    const c = await connectClient()
+    const errors: string[] = []
+    c.on('error', err => errors.push(err.message))
+    let reconnecting = false
+    c.on('reconnecting', () => {
+      reconnecting = true
+    })
+    const disconnected = new Promise<void>(resolve => c.once('disconnect', () => resolve()))
+
+    // As if the server welcomed the client with a protocol version it doesn't speak
+    ;(c.conn as any).emit('message', `0|${protocolVersion + 1}`)
+    await disconnected
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(errors).to.be.eql([
+      `Server has incompatible protocol version: ${protocolVersion + 1} ` +
+        `(expected ${protocolVersion})`,
+    ])
+    expect(reconnecting).to.be.eql(false)
     expect(c.readyState).to.be.eql('closed')
   })
 })

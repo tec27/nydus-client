@@ -319,16 +319,14 @@ export class NydusClient extends EventEmitter<NydusEvents> {
     const decoded = decode(msg)
     switch (decoded.type) {
       case MessageType.ParserError:
-        this.conn?.close() // will cause a call to _onClose
+        // nydus-protocol won't decode a WELCOME for any protocol version but its own
+        if (msg.startsWith(`${MessageType.Welcome}|`)) {
+          this.onIncompatibleServer(msg.slice(2))
+        } else {
+          this.conn?.close() // will cause a call to _onClose
+        }
         break
       case MessageType.Welcome:
-        if (decoded.data !== protocolVersion) {
-          this.emit(
-            'error',
-            new Error('Server has incompatible protocol version: ' + protocolVersion),
-          )
-          this.conn?.close()
-        }
         break
       case MessageType.Result:
       case MessageType.Error:
@@ -338,6 +336,17 @@ export class NydusClient extends EventEmitter<NydusEvents> {
         this.onPublish(decoded)
         break
     }
+  }
+
+  /** Gives up on a server that speaks a different protocol version, since retrying can't help. */
+  private onIncompatibleServer(serverVersion: string) {
+    this.emit(
+      'error',
+      new Error(
+        `Server has incompatible protocol version: ${serverVersion} (expected ${protocolVersion})`,
+      ),
+    )
+    this.disconnect()
   }
 
   private onClose(reason: string, details?: Error) {
